@@ -78,3 +78,24 @@ su -c "sh -c 'for l in /proc/[0-9]*/root; do readlink \$l; done | grep -c $CONTA
 | `$PREFIX/tmp/termux-gui/session.log` | 容器启动与桌面输出 |
 | `$PREFIX/tmp/termux-gui/x11.log` | X 服务端日志 |
 | `$PREFIX/tmp/termux-gui/picom.log` | 合成器日志 |
+
+## 停止脚本与共享 UID
+
+Termux 和 Termux:X11 通常共用同一个 Android UID：
+
+```
+package:com.termux.x11 uid:10234
+package:com.termux     uid:10234
+```
+
+这种情况下 `am force-stop com.termux.x11` 会**按 UID 杀进程**，把 Termux 本体一起带走。
+正确做法是只结束 X11 应用自己的进程：
+
+```bash
+p=$(pidof com.termux.x11 || ps -A -o PID,NAME | grep -w com.termux.x11 | awk '{print $1}')
+[ -n "$p" ] && kill "$p"
+```
+
+另外，脚本里所有进程扫描都应避免「每进程 fork 一次」——700 个进程逐个 `readlink`
+或 `tr | grep`，会让一次停止从 3 秒涨到 40 秒以上。推荐一次性 `ls -l /proc/*/root`
+再 `grep`/`sed` 解析，或 `ps -A -o PID,ARGS` 单次输出后过滤。
