@@ -85,3 +85,51 @@ firefox --new-instance &
 3. 如果某天 Mozilla 源不可用，还可以用官方 tarball：从
    `https://www.mozilla.org/firefox/all/` 下载 `linux-aarch64` 版，解压到
    `/opt/firefox` 并软链到 `/usr/local/bin/firefox`。
+
+## GPU 加速：默认是关的
+
+Mozilla 打包的 Firefox 默认会做一次 "glxtest"（探测 GL/EGL 是否可用）。在
+Termux:X11 + Mesa/KGSL 这套组合下，这个探测经常失败，Firefox 于是**静默回落到
+软件 WebRender**——界面能用，但完全不碰 GPU。
+
+### 怎么判断它有没有用 GPU
+
+看进程有没有打开 GPU 设备节点，比看界面可靠得多：
+
+```bash
+for d in /proc/[0-9]*; do
+  c=$(cat "$d/comm" 2>/dev/null) || continue
+  case "$c" in firefox*|"Web Content"*|"Isolated Web"*) ;; *) continue ;; esac
+  p=${d#/proc/}
+  hit=$(ls -l "$d/fd" 2>/dev/null | grep -E "kgsl|/dev/dri" | sed 's/.*-> //')
+  echo "pid=$p comm=$c dev=[$hit]"
+done
+```
+
+- **空** → 软件渲染
+- **`/dev/kgsl-3d0`** → WebRender 走 GPU（Mesa 的 KGSL 后端）
+
+### 打开 GPU
+
+在 profile 目录写 `user.js`（每次启动都会合并进 prefs，比改 `prefs.js` 稳妥）：
+
+```bash
+PROF=$(ls -d ~/.config/mozilla/firefox/*.default* | head -1)
+cat > "$PROF/user.js" <<'EOF'
+user_pref("gfx.webrender.all", true);
+user_pref("gfx.webrender.software", false);
+user_pref("layers.acceleration.force-enabled", true);
+user_pref("webgl.force-enabled", true);
+user_pref("gfx.canvas.accelerated", true);
+EOF
+```
+
+重启 Firefox 后复查上面的 `fd` 检查，应该能看到 `/dev/kgsl-3d0`。
+
+> 注意：Ubuntu 上的 profile 可能不在 `~/.mozilla` 而在 `~/.config/mozilla`
+> （取决于 `XDG_CONFIG_HOME`）。用 `find ~ -name prefs.js` 定位最快。
+
+### 想关回去
+
+删掉 `user.js` 里那几行（或整个文件）重启即可。软件渲染更省电，GPU 渲染更顺滑，
+在 Adreno 610 这种低端 GPU 上差别不算大，可以按需选择。
