@@ -61,6 +61,44 @@ tmoe_resolve() {
     fi
   fi
 
+  # ---- 登录 shell（严格按 TMOE 每容器脚本的规则）----
+  # 1) Termux 侧 default_shell.conf 里的 TMOE_SHELL（若存在）
+  # 2) 否则按 DEFAULT_LOGIN_SHELL_0..4 的顺序，取容器内第一个存在的
+  # 3) 都没有则用容器 /etc/passwd 里该用户的 shell
+  local shellconf cand="" c i
+  shellconf=$(tmoe_get "$launcher" DEFAULT_SHELL_CONF)
+  shellconf=${shellconf:-$HOME/.config/tmoe-linux/default_shell.conf}
+  [[ -s $shellconf ]] && cand=$(tmoe_get "$shellconf" TMOE_SHELL)
+
+  if [[ -z $cand ]]; then
+    for i in \
+      "$(tmoe_get "$launcher" DEFAULT_LOGIN_SHELL_0)" \
+      "$(tmoe_get "$launcher" DEFAULT_LOGIN_SHELL_1)" \
+      "$(tmoe_get "$launcher" DEFAULT_LOGIN_SHELL_2)" \
+      "$(tmoe_get "$launcher" DEFAULT_LOGIN_SHELL_3)" \
+      "$(tmoe_get "$launcher" DEFAULT_LOGIN_SHELL_4)"; do
+      [[ -n $i ]] || continue
+      case "$i" in */*) c=$i ;; *) c="/bin/$i" ;; esac
+      if [[ -e "$CONTAINER$c" || -L "$CONTAINER$c" ]]; then cand=$c; break; fi
+    done
+  fi
+
+  # TMOE：值不带斜杠时补 /bin/ 前缀
+  if [[ -n $cand ]]; then
+    case "$cand" in */*) ;; *) cand="/bin/$cand" ;; esac
+  elif [[ -r "$CONTAINER/etc/passwd" ]]; then
+    cand=$(awk -F: -v u="$CHROOT_USER" '$1==u {print $7}' "$CONTAINER/etc/passwd" 2>/dev/null | head -1)
+  fi
+  USER_SHELL=${cand:-/bin/sh}
+  case "$USER_SHELL" in */nologin|*/false|"") USER_SHELL=/bin/sh ;; esac
+
+  # TMOE 的登录参数（pwsh/nushell 不认 -l）
+  USER_LOGIN_ARG=$(tmoe_get "$launcher" LOGIN_SHELL_ARG)
+  USER_LOGIN_ARG=${USER_LOGIN_ARG:--l}
+  case "$USER_SHELL" in
+    */pwsh|*/nushell|*/nu) USER_LOGIN_ARG="" ;;
+  esac
+
   # ---- 其他 ----
   WM_SIZE=$(cat "$wmsize" 2>/dev/null | tr -d '[:space:]')
   WM_SIZE=${WM_SIZE:-}

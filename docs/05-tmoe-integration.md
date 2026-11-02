@@ -71,6 +71,39 @@ tmoe_write_mounts   # 生成挂载脚本，在私有命名空间内 source
 - 挂载只存在于会话私有命名空间，退出即销毁，**不可能泄漏**
 - 可以自由注入 GPU 与显示相关的环境变量
 
+## 登录 shell
+
+TMOE 不是简单用 `/etc/passwd` 里的 shell，它有一套**每容器脚本内的候选列表**：
+
+```bash
+# 摘自 $CONTAINER/usr/local/etc/tmoe-linux/container/tmoe-linux-container
+DEFAULT_LOGIN_SHELL_0=bash
+DEFAULT_LOGIN_SHELL_1="/bin/fish"
+DEFAULT_LOGIN_SHELL_2="/bin/bash"
+DEFAULT_LOGIN_SHELL_3="/bin/ash"
+DEFAULT_LOGIN_SHELL_4="/bin/su"
+LOGIN_SHELL_ARG="-l"
+DEFAULT_SHELL_CONF="/data/data/com.termux/files/home/.config/tmoe-linux/default_shell.conf"
+```
+
+规则是：
+
+1. 若 `DEFAULT_SHELL_CONF` 存在且含 `TMOE_SHELL`，优先用它；
+2. 否则按 `DEFAULT_LOGIN_SHELL_0..4` 的顺序，取**容器内第一个存在**的；
+3. 值不带斜杠时补 `/bin/` 前缀；
+4. 以 `SHELL=<结果>` 传入环境，并附加 `LOGIN_SHELL_ARG`（默认 `-l`）。
+
+本项目完全按这套规则解析（`tmoe_resolve` 里的「登录 shell」段），因此你在容器脚本里改 `DEFAULT_LOGIN_SHELL_0` 或加一个 `default_shell.conf`，启动脚本会自动跟随。
+
+两处使用：
+
+| 场景 | 实际命令 |
+|---|---|
+| 桌面 | `bash -l -c "dbus-run-session -- startxfce4"` |
+| 终端 | `bash -l`（交互）/ `bash -l -c "<命令>"` |
+
+> 登录 shell 会加载 `/etc/profile` 与 profile.d，所以会话内的 `PATH` 会包含发行版默认路径（如 `/snap/bin`），与直接在 Termux 里 `chroot` 的行为一致。
+
 ## 用户身份
 
 TMOE 的主用户（如 `pad`，UID 1001）现在也是桌面用户：

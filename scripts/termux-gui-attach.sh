@@ -51,6 +51,8 @@ else
   warn "未找到 $LIB，跳过 TMOE 配置解析"
   USER_HOME=/root
   USER_WRAP=""
+  USER_SHELL=/bin/sh
+  USER_LOGIN_ARG=-l
 fi
 
 mkdir -p "$STATE"
@@ -60,9 +62,7 @@ else
   rm -f "$CMDFILE"
 fi
 
-# 容器内 shell（有 bash 用 bash，否则 dash）
-SHELL_PATH=/bin/bash
-[[ -x "$CONTAINER$SHELL_PATH" ]] || SHELL_PATH=/bin/sh
+
 
 if [[ -S "$PREFIX/tmp/.X11-unix/X${DISPLAY_NUM#:}" ]]; then
   info "桌面会话在运行，DISPLAY=$DISPLAY_NUM（图形程序可用）"
@@ -92,14 +92,14 @@ if [ -s "$CONTAINER/tmp/attach-cmd" ]; then
   exec chroot "$CONTAINER" /usr/bin/env -i \\
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
     HOME="$USER_HOME" TERM="\${TERM:-xterm-256color}" DISPLAY="$DISPLAY_NUM" \\
-    MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
-    $USER_WRAP $SHELL_PATH -lc "\$(cat "$CONTAINER/tmp/attach-cmd")"
+    MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER SHELL="$USER_SHELL" USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
+    $USER_WRAP $USER_SHELL $USER_LOGIN_ARG -c "\$(cat "$CONTAINER/tmp/attach-cmd")"
 fi
 exec chroot "$CONTAINER" /usr/bin/env -i \\
   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
   HOME="$USER_HOME" TERM="\${TERM:-xterm-256color}" DISPLAY="$DISPLAY_NUM" \\
-  MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
-  $USER_WRAP $SHELL_PATH -l
+  MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER SHELL="$USER_SHELL" USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
+  $USER_WRAP $USER_SHELL $USER_LOGIN_ARG
 INNEREOF
 chmod 644 "$INNER"
 
