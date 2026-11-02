@@ -86,7 +86,8 @@ COMPOSITOR=picom bash ~/bin/termux-gui-start.sh
     ├── 03-compositor.md       # 白屏之谜：合成器的 A/B 实验
     ├── 04-mount-safety.md     # 挂载命名空间事故复盘
     ├── 05-tmoe-integration.md # 与 TMOE 的分工
-    └── 06-troubleshooting.md  # 排障手册
+    ├── 06-troubleshooting.md  # 排障手册
+    └── 07-electron-apps.md    # Electron/VS Code 起不来的原因
 ```
 
 ## 已知限制

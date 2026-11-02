@@ -37,6 +37,14 @@ ps -A -o PID,ARGS | grep "chroot $CONTAINER"
 | `isolation failed: shared=N` | busybox 路径不对，或内核限制；检查 `BUSYBOX` 变量 |
 | `mount: bad /etc/fstab` | 用了 toybox 的 mount，换 busybox |
 
+## 应用类
+
+| 症状 | 原因 | 处理 |
+|---|---|---|
+| code 立即退出 / 窗口闪退 | 容器内无 /dev/shm，且 setuid 沙箱不可用 | 用 --no-sandbox --disable-dev-shm-usage 启动，详见 [07](07-electron-apps.md) |
+| VS Code 报 launch-failed (1002) | 崩溃后配置目录损坏 | 删除/备份 ~/.config/Code 后重试 |
+| sudo 报 setuid 错误 | 容器内 setuid 失效 | 用 setpriv 降权，或从 root 侧执行 |
+
 ## 系统级异常
 
 | 症状 | 可能原因 | 处理 |
