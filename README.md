@@ -38,6 +38,23 @@ bash ~/bin/termux-gui-stop.sh
 COMPOSITOR=picom bash ~/bin/termux-gui-start.sh
 ```
 
+## Termux:Widget 一键入口
+
+加 `--widget` 安装，会在 `~/.shortcuts` 下生成三个入口，桌面 widget 里直接点：
+
+```bash
+bash install.sh --widget
+```
+
+| 入口 | 位置 | 行为 |
+|---|---|---|
+| `start-desktop` | `~/.shortcuts/tasks/` | 后台启动桌面，不弹终端 |
+| `stop-desktop` | `~/.shortcuts/tasks/` | 后台停止 |
+| `attach-terminal` | `~/.shortcuts/` | 打开终端进容器 |
+
+`tasks/` 是 Termux:Widget 的「静默执行」目录；需要交互的 `attach` 必须放外层，
+否则没有终端可输。
+
 ## 故事线：四个门槛
 
 这个项目不是一个“写个脚本就好了”的任务。它依次撞上了四堵墙，每一堵都值得单独写一章：
