@@ -151,10 +151,21 @@ debug2: we did not send a packet, disable method
 ```
 
 服务端日志对应的是 key 已经 `Accepted`、回了 PK_OK，然后客户端自己断开。
-用容器内的 Linux 客户端（OpenSSH 10.2）测试同一台 sshd 是**可以登录**的，
-所以这是客户端侧的问题，不是服务端配置。
 
-规避办法：
+**更正**：这条最初被我归因成"Windows 客户端 bug"，实际根因是**密钥带口令**
+（见上面"坑一"）。`we did not send a packet` 是客户端签名失败——它要口令，
+但 `BatchMode` 下拿不到，于是直接放弃。
 
-- 用 WSL 里的 `ssh`、PuTTY 或另一台 Linux 主机连；
-- 或在设备上用 `pkg install openssh` 装客户端，从 Termux 连 `127.0.0.1:2222`。
+换成真空串口令的密钥后，Windows 自带 ssh 和 Git Bash 的 ssh 都能正常登录：
+
+```bash
+ssh -p 2222 pad@127.0.0.1        # 配合 adb forward
+```
+
+排查这类问题的通用判据：
+
+| 现象 | 含义 |
+|---|---|
+| `Accepted key` + 客户端 `we did not send a packet` | 客户端签名失败（多半是密钥口令） |
+| `Permission denied` 且服务端没有 `Accepted key` | 公钥没匹配上（authorized_keys / 权限） |
+| `Accepted publickey` 后卡住 | 会话阶段问题（PAM、DNS、pty） |
