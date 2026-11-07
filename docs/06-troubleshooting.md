@@ -99,3 +99,53 @@ p=$(pidof com.termux.x11 || ps -A -o PID,NAME | grep -w com.termux.x11 | awk '{p
 另外，脚本里所有进程扫描都应避免「每进程 fork 一次」——700 个进程逐个 `readlink`
 或 `tr | grep`，会让一次停止从 3 秒涨到 40 秒以上。推荐一次性 `ls -l /proc/*/root`
 再 `grep`/`sed` 解析，或 `ps -A -o PID,ARGS` 单次输出后过滤。
+## sudo 报 "must be owned by uid 0 and have the setuid bit set"
+
+这**不是** sudo 配置错误。容器里的 `/usr/bin/sudo` 通常是 `-rwsr-xr-x root:root`，
+sudoers 里也有对应的 `NOPASSWD` 规则，但依然报错，原因是：
+
+```
+/dev/block/dm-55 /data f2fs rw,...,nosuid,nodev,...
+```
+
+Android 的 `/data` 以 **`nosuid`** 挂载，而 chroot 根文件系统就在 `/data` 上，
+所以内核会**忽略所有 setuid 位**。sudo 启动时发现自己不是 euid 0，于是报那句错。
+同一个原因也让 `chrome-sandbox` 失效（Electron 需要 `--no-sandbox`）。
+
+### 为什么 TMOE 启动时看起来正常
+
+TMOE 的启动器是**以 root 进入 chroot，再用 `sudo -Eu <user>` 降权**：
+
+```bash
+/usr/bin/sudo -Eu pad /bin/bash -l
+```
+
+这是 root → 普通用户，不需要 setuid 提升，所以不受 nosuid 影响。
+而你在 pad shell 里执行 `sudo apt ...` 是反方向（普通用户 → root），才会失败。
+
+### 解决：把 sudo 放到 tmpfs 上
+
+tmpfs 允许 suid。在会话命名空间里准备一份带 setuid 的 sudo 副本：
+
+```bash
+mkdir -p "$D/run/sudobin"
+mount -t tmpfs tmpfs "$D/run/sudobin"
+cp "$D/usr/lib/cargo/bin/sudo" "$D/run/sudobin/sudo"
+chown 0:0 "$D/run/sudobin/sudo"
+chmod 4755 "$D/run/sudobin/sudo"
+chroot "$D" /bin/ln -sf /run/sudobin/sudo /usr/local/bin/sudo
+```
+
+`/usr/local/bin` 在 PATH 中优先于 `/usr/bin`，所以用户直接敲 `sudo` 就会用上这份副本。
+
+本项目的 `termux-gui-start.sh` 和 `termux-gui-attach.sh` 都会自动做这件事
+（`sudo` 是 sudo-rs 时路径为 `/usr/lib/cargo/bin/sudo`）。验证：
+
+```bash
+sudo -n id      # 期望 uid=0(root)
+```
+
+### 不推荐的做法
+
+- `mount -o remount,suid /data`：会影响整个 Android，破坏系统安全模型。
+- 直接 `chmod u+s`：在 nosuid 挂载上无效，改了也白改。

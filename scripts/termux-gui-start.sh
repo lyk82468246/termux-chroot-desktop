@@ -235,6 +235,19 @@ echo "desktop_user=$UNAME home=$UHOME"
   RUN="/tmp/runtime-$UNAME"
   chroot "$D" /bin/mkdir -p "$RUN" || exit 16
   chroot "$D" /bin/chmod 700 "$RUN" || exit 17
+
+  # /data 是 nosuid 挂载，容器内 setuid 全部失效（sudo 会报 "must have setuid bit"）。
+  # 把 sudo 复制到 tmpfs 以获得可用 suid，再用 /usr/local/bin/sudo 软链指向它。
+  if [ -f "$D/usr/lib/cargo/bin/sudo" ]; then
+    mkdir -p "$D/run/sudobin" 2>/dev/null
+    if "$BB" mount -t tmpfs tmpfs "$D/run/sudobin" 2>/dev/null; then
+      cp "$D/usr/lib/cargo/bin/sudo" "$D/run/sudobin/sudo" 2>/dev/null
+      chown 0:0 "$D/run/sudobin/sudo" 2>/dev/null
+      chmod 4755 "$D/run/sudobin/sudo" 2>/dev/null
+      chroot "$D" /bin/mkdir -p /usr/local/bin 2>/dev/null
+      chroot "$D" /bin/ln -sf /run/sudobin/sudo /usr/local/bin/sudo 2>/dev/null
+    fi
+  fi
   chroot "$D" /bin/chown "$UUID:$UGID" "$RUN" 2>/dev/null || true
 
   # 把 root 的 xfwm4 配置复制给桌面用户，并强制关闭合成（Termux:X11 白屏问题）

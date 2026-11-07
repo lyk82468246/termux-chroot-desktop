@@ -85,6 +85,18 @@ $BUSYBOX mount --bind /dev "$CONTAINER/dev" || exit 13
 $BUSYBOX mount --bind /dev/pts "$CONTAINER/dev/pts" 2>/dev/null || true
 mkdir -p "$CONTAINER/tmp/.X11-unix" "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 chmod 700 "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
+
+# 同 start：/data 为 nosuid，sudo 需要 tmpfs 上的 setuid 副本
+if [ -f "$CONTAINER/usr/lib/cargo/bin/sudo" ]; then
+  mkdir -p "$CONTAINER/run/sudobin" 2>/dev/null
+  if $BUSYBOX mount -t tmpfs tmpfs "$CONTAINER/run/sudobin" 2>/dev/null; then
+    cp "$CONTAINER/usr/lib/cargo/bin/sudo" "$CONTAINER/run/sudobin/sudo" 2>/dev/null
+    chown 0:0 "$CONTAINER/run/sudobin/sudo" 2>/dev/null
+    chmod 4755 "$CONTAINER/run/sudobin/sudo" 2>/dev/null
+    chroot "$CONTAINER" /bin/mkdir -p /usr/local/bin 2>/dev/null
+    chroot "$CONTAINER" /bin/ln -sf /run/sudobin/sudo /usr/local/bin/sudo 2>/dev/null
+  fi
+fi
 chown ${USER_UID:-0}:${USER_GID:-0} "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 [ -d "$PREFIX/tmp/.X11-unix" ] && $BUSYBOX mount --bind "$PREFIX/tmp/.X11-unix" "$CONTAINER/tmp/.X11-unix" 2>/dev/null
 [ -r "$STATE/extra-mounts.sh" ] && . "$STATE/extra-mounts.sh"
