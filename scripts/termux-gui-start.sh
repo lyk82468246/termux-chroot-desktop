@@ -240,7 +240,7 @@ echo "desktop_user=$UNAME home=$UHOME"
   # 把 sudo 复制到 tmpfs 以获得可用 suid，再用 /usr/local/bin/sudo 软链指向它。
   if [ -f "$D/usr/lib/cargo/bin/sudo" ]; then
     mkdir -p "$D/run/sudobin" 2>/dev/null
-    if "$BB" mount -t tmpfs tmpfs "$D/run/sudobin" 2>/dev/null; then
+    if "$BB" mount -t tmpfs -o mode=0755,uid=0,gid=0 tmpfs "$D/run/sudobin" 2>/dev/null; then
       cp "$D/usr/lib/cargo/bin/sudo" "$D/run/sudobin/sudo" 2>/dev/null
       chown 0:0 "$D/run/sudobin/sudo" 2>/dev/null
       chmod 4755 "$D/run/sudobin/sudo" 2>/dev/null

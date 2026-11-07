@@ -89,7 +89,7 @@ chmod 700 "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 # 同 start：/data 为 nosuid，sudo 需要 tmpfs 上的 setuid 副本
 if [ -f "$CONTAINER/usr/lib/cargo/bin/sudo" ]; then
   mkdir -p "$CONTAINER/run/sudobin" 2>/dev/null
-  if $BUSYBOX mount -t tmpfs tmpfs "$CONTAINER/run/sudobin" 2>/dev/null; then
+  if $BUSYBOX mount -t tmpfs -o mode=0755,uid=0,gid=0 tmpfs "$CONTAINER/run/sudobin" 2>/dev/null; then
     cp "$CONTAINER/usr/lib/cargo/bin/sudo" "$CONTAINER/run/sudobin/sudo" 2>/dev/null
     chown 0:0 "$CONTAINER/run/sudobin/sudo" 2>/dev/null
     chmod 4755 "$CONTAINER/run/sudobin/sudo" 2>/dev/null
