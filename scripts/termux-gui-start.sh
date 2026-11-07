@@ -18,6 +18,9 @@ DPI=${DPI:-160}
 DESKTOP_CMD=${DESKTOP_CMD:-"dbus-run-session -- startxfce4"}
 # 合成器: none（默认，无阴影、最省）/ picom（xrender 后端，有阴影，CPU 合成）
 COMPOSITOR=${COMPOSITOR:-none}
+# 容器内 sshd：默认开启（容器没有 sshd 二进制时自动跳过）
+SSHD=${SSHD:-1}
+SSHD_PORT=${SSHD_PORT:-2222}
 BUSYBOX=${BUSYBOX:-/data/adb/ksu/bin/busybox}
 CONTAINER=${CONTAINER:-}
 
@@ -214,10 +217,10 @@ fi
 # ---------- 生成 root 侧脚本 ----------
 cat > "$HELPER" <<'ROOTEOF'
 #!/system/bin/sh
-D=$1; DPY=$2; CMD=$3; P=$4; BB=$5; UHOME=$6; UW=$7; UUID=$8; UGID=$9; UNAME=${10}; USHELL=${11}; ULOGIN=${12}; ULOCALE=${13}
+D=$1; DPY=$2; CMD=$3; P=$4; BB=$5; UHOME=$6; UW=$7; UUID=$8; UGID=$9; UNAME=${10}; USHELL=${11}; ULOGIN=${12}; ULOCALE=${13}; SSHD=${14}; SSHD_PORT=${15}
 [ -d "$D" ] || { echo "容器不存在: $D"; exit 2; }
 mkdir -p "$D/proc" "$D/sys" "$D/dev" "$D/tmp/.X11-unix" 2>/dev/null
-export D DPY CMD P BB UHOME UW UUID UGID UNAME USHELL ULOGIN ULOCALE
+export D DPY CMD P BB UHOME UW UUID UGID UNAME USHELL ULOGIN ULOCALE SSHD SSHD_PORT
 EXTRA="$P/tmp/termux-gui/extra-mounts.sh"
 echo "parent_mounts_before=$(grep -c '' /proc/mounts)"
 echo "desktop_user=$UNAME home=$UHOME"
@@ -262,6 +265,18 @@ echo "desktop_user=$UNAME home=$UHOME"
     chroot "$D" /bin/sed -i "s/name=\"use_compositing\" type=\"bool\" value=\"true\"/name=\"use_compositing\" type=\"bool\" value=\"false\"/" "$UCFG" 2>/dev/null || true
   fi
 
+  if [ "$SSHD" = "1" ] && [ -x "$D/usr/sbin/sshd" ]; then
+    chroot "$D" /bin/mkdir -p /run/sshd 2>/dev/null
+    # -D -e：前台运行并把日志写进 sshd.log（容器没有 syslog，否则什么都看不到）
+    chroot "$D" /usr/sbin/sshd -D -e -p "$SSHD_PORT" >>"$P/tmp/termux-gui/sshd.log" 2>&1 &
+    sleep 1
+    if chroot "$D" /usr/bin/test -s /run/sshd.pid 2>/dev/null; then
+      echo "sshd_started port=$SSHD_PORT"
+    else
+      echo "sshd_failed (see termux-gui/sshd.log)"
+    fi
+  fi
+
   exec chroot "$D" /usr/bin/env -i \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     HOME="$UHOME" USER="$UNAME" LOGNAME="$UNAME" SHELL="$USHELL" DISPLAY="$DPY" \
@@ -284,11 +299,12 @@ if declare -f tmoe_write_mounts >/dev/null; then
 fi
 setsid bash -c '
   echo $$ > "$1"
-  exec "$2" -c "sh \"$3\" \"$4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9\" \"${10}\" \"${11}\" \"${12}\" \"${13}\" \"${14}\" \"${15}\" \"${16}\""
+  exec "$2" -c "sh \"$3\" \"$4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9\" \"${10}\" \"${11}\" \"${12}\" \"${13}\" \"${14}\" \"${15}\" \"${16}\" \"${17}\" \"${18}\""
 ' _ "$PIDF" "$SU" \
     "$HELPER" "$CONTAINER" "$DISPLAY_NUM" "$DESKTOP_CMD" "$PREFIX" "$BUSYBOX" \
     "${USER_HOME:-/root}" "${USER_WRAP:-}" "${USER_UID:-0}" "${USER_GID:-0}" "${CHROOT_USER:-root}" \
     "${USER_SHELL:-/bin/sh}" "${USER_LOGIN_ARG:--l}" "${LOCALE_RESOLVED:-en_US.UTF-8}" \
+    "${SSHD:-1}" "${SSHD_PORT:-2222}" \
   >>"$LOG" 2>&1 </dev/null &
 
 # 等桌面进程出现（最多 30 秒）

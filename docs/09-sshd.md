@@ -1,0 +1,124 @@
+# 09 · 容器内默认开启 sshd
+
+启动脚本会在会话里自动拉起 `openssh-server`，监听 **2222** 端口。
+
+## 为什么是 2222
+
+chroot 与 Android 共享网络栈。22 端口容易和别的服务或后续安装的东西冲突，
+2222 更安全；需要改的话：
+
+```bash
+SSHD_PORT=22 bash ~/bin/termux-gui-start.sh
+```
+
+不想开：
+
+```bash
+SSHD=0 bash ~/bin/termux-gui-start.sh
+```
+
+## 配置
+
+装在容器里的 `openssh-server` 加上一份 drop-in：
+
+```ini
+# /etc/ssh/sshd_config.d/10-termux-gui.conf
+Port 2222
+ListenAddress 0.0.0.0
+PermitRootLogin no
+PasswordAuthentication yes
+PubkeyAuthentication yes
+AllowUsers pad
+X11Forwarding no
+AllowTcpForwarding yes
+UseDNS no
+GSSAPIAuthentication no
+UsePAM no
+PidFile /run/sshd.pid
+```
+
+几个非默认项的原因：
+
+| 项 | 原因 |
+|---|---|
+| `UsePAM no` | 容器里没有 systemd，`pam_systemd` 可能卡住会话建立 |
+| `UseDNS no` | 避免登录时反向解析卡顿 |
+| `GSSAPIAuthentication no` | 容器没有 Kerberos，关掉省一次失败尝试 |
+
+`PermitRootLogin no` 是刻意的：容器里 `pad` 用 `sudo` 提权（见
+[06](06-troubleshooting.md) 的 tmpfs sudo 方案），不需要 root 直接登录。
+
+## 启动方式
+
+容器没有 systemd，所以 sshd 由启动脚本在会话命名空间里直接拉起：
+
+```bash
+chroot "$D" /usr/sbin/sshd -D -e -p "$SSHD_PORT" >>"$PREFIX/tmp/termux-gui/sshd.log" 2>&1 &
+```
+
+用 `-D -e` 是因为容器里没有 syslog——否则日志会丢失，出问题完全没线索。
+日志在 `$PREFIX/tmp/termux-gui/sshd.log`。
+
+## 认证
+
+### 公钥（推荐）
+
+把公钥追加到容器的 `/home/pad/.ssh/authorized_keys`：
+
+```bash
+mkdir -p "$D/home/pad/.ssh"
+cat your_key.pub >> "$D/home/pad/.ssh/authorized_keys"
+chown -R 1001:60000 "$D/home/pad/.ssh"
+chmod 700 "$D/home/pad/.ssh"
+chmod 600 "$D/home/pad/.ssh/authorized_keys"
+```
+
+### 密码
+
+`pad` 已有密码哈希，直接改密码即可：
+
+```bash
+sudo passwd pad
+```
+
+## 怎么连
+
+### 同网段且没有 AP 隔离
+
+```bash
+ssh -p 2222 pad@<设备IP>
+```
+
+### Wi-Fi 开了 AP 隔离（常见）
+
+设备之间互相不可见，但可以用 adb 走 USB 转发：
+
+```bash
+adb forward tcp:2222 tcp:2222
+ssh -p 2222 pad@127.0.0.1
+```
+
+### 从容器内部验证
+
+```bash
+ssh -p 2222 pad@127.0.0.1 'id'
+```
+
+## 已知问题：Windows 自带 ssh 客户端握手失败
+
+Windows 10/11 自带的 OpenSSH（9.5p2）在这里会卡在签名阶段：
+
+```
+debug3: sign_and_send_pubkey: using publickey-hostbound-v00@openssh.com
+debug3: sign_and_send_pubkey: signing using ssh-ed25519
+debug2: we did not send a packet, disable method
+```
+
+服务端日志对应的是 key 已经 `Accepted`、回了 PK_OK，然后客户端自己断开。
+用容器内的 Linux 客户端（OpenSSH 10.2）测试同一台 sshd 是**可以登录**的，
+所以这是客户端侧的问题，不是服务端配置。
+
+规避办法：
+
+- 用 WSL 里的 `ssh`、PuTTY 或另一台 Linux 主机连；
+- 或在设备上用 `pkg install openssh` 装客户端，从 Termux 连 `127.0.0.1:2222`。
