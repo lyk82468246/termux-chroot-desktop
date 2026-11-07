@@ -196,3 +196,38 @@ ssh -p 2222 pad@127.0.0.1 'echo $0; echo $BASH_VERSION'
 ```
 
 > 前提是 `/etc/shells` 里有 `/bin/bash`（Ubuntu 默认有），否则 `usermod` 会拒绝。
+## 登录 shell 自动跟随 TMOE 配置
+
+从 `termux-gui-start.sh` 启动时，会把 `/etc/passwd` 里的登录 shell 与 TMOE 的
+`DEFAULT_LOGIN_SHELL_0` 对齐，所以不需要手动 `usermod`：
+
+```
+shell_synced pad: /bin/sh -> /bin/bash
+```
+
+实现要点：
+
+```bash
+if [ "$UNAME" != "root" ] && [ -n "$USHELL" ] && [ -x "$D$USHELL" ]; then
+  CUR_SHELL=$(grep "^$UNAME:" "$D/etc/passwd" | cut -d: -f7 | head -1)
+  [ "$CUR_SHELL" != "$USHELL" ] && chroot "$D" /usr/sbin/usermod -s "$USHELL" "$UNAME"
+fi
+```
+
+改配置的方式：
+
+```bash
+# 容器内
+sed -i 's/^DEFAULT_LOGIN_SHELL_0=.*/DEFAULT_LOGIN_SHELL_0=zsh/' \
+  /usr/local/etc/tmoe-linux/container/tmoe-linux-container
+# 然后重启桌面会话，passwd 会自动跟着变
+```
+
+几个注意：
+
+- **不要用 `/etc/shells` 做白名单**。Ubuntu 的 `/etc/shells` 里没有
+  `/bin/dash`，按它过滤会导致合法的 shell 被跳过（我就是这么踩了一次）。
+  只校验二进制是否存在即可。
+- `usermod` 本身不检查 `/etc/shells`，强制检查的是 `chsh`。
+- 只同步 `CHROOT_USER`，`root` 不动。
+- 同步发生在**会话启动**时，所以改完配置要重启一次桌面才会生效。

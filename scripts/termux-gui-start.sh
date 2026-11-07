@@ -277,6 +277,18 @@ echo "desktop_user=$UNAME home=$UHOME"
     fi
   fi
 
+  # 把 passwd 里的登录 shell 与 TMOE 配置对齐（sshd 只认 passwd）
+  if [ "$UNAME" != "root" ] && [ -n "$USHELL" ] && [ -x "$D$USHELL" ]; then
+    CUR_SHELL=$("$BB" grep "^$UNAME:" "$D/etc/passwd" 2>/dev/null | "$BB" cut -d: -f7 | "$BB" head -1)
+    if [ "$CUR_SHELL" != "$USHELL" ]; then
+      if chroot "$D" /usr/sbin/usermod -s "$USHELL" "$UNAME" 2>>"$P/tmp/termux-gui/session.log"; then
+        echo "shell_synced $UNAME: ${CUR_SHELL:-none} -> $USHELL"
+      else
+        echo "shell_sync_failed $UNAME -> $USHELL"
+      fi
+    fi
+  fi
+
   exec chroot "$D" /usr/bin/env -i \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     HOME="$UHOME" USER="$UNAME" LOGNAME="$UNAME" SHELL="$USHELL" DISPLAY="$DPY" \
