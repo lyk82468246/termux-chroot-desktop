@@ -169,3 +169,30 @@ ssh -p 2222 pad@127.0.0.1        # 配合 adb forward
 | `Accepted key` + 客户端 `we did not send a packet` | 客户端签名失败（多半是密钥口令） |
 | `Permission denied` 且服务端没有 `Accepted key` | 公钥没匹配上（authorized_keys / 权限） |
 | `Accepted publickey` 后卡住 | 会话阶段问题（PAM、DNS、pty） |
+
+## 为什么 SSH 进去是 sh 而不是 bash
+
+sshd 决定登录 shell 时只看 `/etc/passwd` 的最后一个字段：
+
+```
+pad:x:1001:60000::/home/pad:/bin/sh
+```
+
+而启动器里的 bash 来自 TMOE 配置（`DEFAULT_LOGIN_SHELL_0=bash`），
+**只作用于桌面会话和 attach**，不会改账号本身。两者是独立的。
+
+改成 bash：
+
+```bash
+usermod -s /bin/bash pad        # 在容器内以 root 执行
+```
+
+验证：
+
+```bash
+ssh -p 2222 pad@127.0.0.1 'echo $0; echo $BASH_VERSION'
+# bash
+# 5.3.9(1)-release
+```
+
+> 前提是 `/etc/shells` 里有 `/bin/bash`（Ubuntu 默认有），否则 `usermod` 会拒绝。
