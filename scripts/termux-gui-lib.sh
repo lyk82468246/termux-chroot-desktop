@@ -99,6 +99,15 @@ tmoe_resolve() {
     */pwsh|*/nushell|*/nu) USER_LOGIN_ARG="" ;;
   esac
 
+  # ---- locale ----
+  # 会话是 env -i 起的，必须显式给 LANG，否则进程落到 POSIX（中文直接乱码）
+  LOCALE_RESOLVED=${LOCALE:-en_US.UTF-8}
+  # 编译后的目录名可能是 en_US.utf8 或 en_US.UTF-8，两种都认
+  if [[ ! -d "$CONTAINER/usr/lib/locale/${LOCALE_RESOLVED}" && \
+        ! -d "$CONTAINER/usr/lib/locale/${LOCALE_RESOLVED%%.*}.utf8" ]]; then
+    LOCALE_RESOLVED=C.UTF-8
+  fi
+
   # ---- 其他 ----
   WM_SIZE=$(cat "$wmsize" 2>/dev/null | tr -d '[:space:]')
   WM_SIZE=${WM_SIZE:-}

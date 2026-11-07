@@ -214,10 +214,10 @@ fi
 # ---------- 生成 root 侧脚本 ----------
 cat > "$HELPER" <<'ROOTEOF'
 #!/system/bin/sh
-D=$1; DPY=$2; CMD=$3; P=$4; BB=$5; UHOME=$6; UW=$7; UUID=$8; UGID=$9; UNAME=${10}; USHELL=${11}; ULOGIN=${12}
+D=$1; DPY=$2; CMD=$3; P=$4; BB=$5; UHOME=$6; UW=$7; UUID=$8; UGID=$9; UNAME=${10}; USHELL=${11}; ULOGIN=${12}; ULOCALE=${13}
 [ -d "$D" ] || { echo "容器不存在: $D"; exit 2; }
 mkdir -p "$D/proc" "$D/sys" "$D/dev" "$D/tmp/.X11-unix" 2>/dev/null
-export D DPY CMD P BB UHOME UW UUID UGID UNAME USHELL ULOGIN
+export D DPY CMD P BB UHOME UW UUID UGID UNAME USHELL ULOGIN ULOCALE
 EXTRA="$P/tmp/termux-gui/extra-mounts.sh"
 echo "parent_mounts_before=$(grep -c '' /proc/mounts)"
 echo "desktop_user=$UNAME home=$UHOME"
@@ -265,6 +265,7 @@ echo "desktop_user=$UNAME home=$UHOME"
   exec chroot "$D" /usr/bin/env -i \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     HOME="$UHOME" USER="$UNAME" LOGNAME="$UNAME" SHELL="$USHELL" DISPLAY="$DPY" \
+    LANG="$ULOCALE" LC_ALL="$ULOCALE" \
     MESA_LOADER_DRIVER_OVERRIDE=kgsl \
     XDG_RUNTIME_DIR="$RUN" \
     $UW "$USHELL" $ULOGIN -c "$CMD"
@@ -283,11 +284,11 @@ if declare -f tmoe_write_mounts >/dev/null; then
 fi
 setsid bash -c '
   echo $$ > "$1"
-  exec "$2" -c "sh \"$3\" \"$4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9\" \"${10}\" \"${11}\" \"${12}\" \"${13}\" \"${14}\" \"${15}\""
+  exec "$2" -c "sh \"$3\" \"$4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9\" \"${10}\" \"${11}\" \"${12}\" \"${13}\" \"${14}\" \"${15}\" \"${16}\""
 ' _ "$PIDF" "$SU" \
     "$HELPER" "$CONTAINER" "$DISPLAY_NUM" "$DESKTOP_CMD" "$PREFIX" "$BUSYBOX" \
     "${USER_HOME:-/root}" "${USER_WRAP:-}" "${USER_UID:-0}" "${USER_GID:-0}" "${CHROOT_USER:-root}" \
-    "${USER_SHELL:-/bin/sh}" "${USER_LOGIN_ARG:--l}" \
+    "${USER_SHELL:-/bin/sh}" "${USER_LOGIN_ARG:--l}" "${LOCALE_RESOLVED:-en_US.UTF-8}" \
   >>"$LOG" 2>&1 </dev/null &
 
 # 等桌面进程出现（最多 30 秒）

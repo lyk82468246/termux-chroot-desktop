@@ -53,6 +53,7 @@ else
   USER_WRAP=""
   USER_SHELL=/bin/sh
   USER_LOGIN_ARG=-l
+  LOCALE_RESOLVED=${LOCALE:-en_US.UTF-8}
 fi
 
 mkdir -p "$STATE"
@@ -104,12 +105,14 @@ if [ -s "$CONTAINER/tmp/attach-cmd" ]; then
   exec chroot "$CONTAINER" /usr/bin/env -i \\
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
     HOME="$USER_HOME" TERM="\${TERM:-xterm-256color}" DISPLAY="$DISPLAY_NUM" \\
+    LANG="$LOCALE_RESOLVED" LC_ALL="$LOCALE_RESOLVED" \\
     MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER SHELL="$USER_SHELL" USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
     $USER_WRAP $USER_SHELL $USER_LOGIN_ARG -c "\$(cat "$CONTAINER/tmp/attach-cmd")"
 fi
 exec chroot "$CONTAINER" /usr/bin/env -i \\
   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
   HOME="$USER_HOME" TERM="\${TERM:-xterm-256color}" DISPLAY="$DISPLAY_NUM" \\
+  LANG="$LOCALE_RESOLVED" LC_ALL="$LOCALE_RESOLVED" \\
   MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER SHELL="$USER_SHELL" USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
   $USER_WRAP $USER_SHELL $USER_LOGIN_ARG
 INNEREOF

@@ -149,3 +149,55 @@ sudo -n id      # 期望 uid=0(root)
 
 - `mount -o remount,suid /data`：会影响整个 Android，破坏系统安全模型。
 - 直接 `chmod u+s`：在 nosuid 挂载上无效，改了也白改。
+## GUI 终端中文乱码
+
+不是字体问题（中文字体通常都在），是 **locale 没传进会话**。
+
+启动器用 `env -i` 拉起桌面，如果没显式给 `LANG`，进程会落到 `POSIX`：
+
+```
+LANG=
+LC_CTYPE="POSIX"
+```
+
+GTK/VTE 在非 UTF-8 locale 下会把多字节字符当单字节处理，于是中文变成乱码。
+
+### 检查
+
+```bash
+locale | head -3            # LC_CTYPE 是 POSIX 就是这个问题
+locale -a | grep -i zh_CN   # 容器里是否生成了中文 locale
+```
+
+如果 `locale -a` 里没有中文，先在容器内生成：
+
+```bash
+locale-gen zh_CN.UTF-8 && update-locale LANG=zh_CN.UTF-8
+```
+
+### 处理
+
+本项目在 start/attach 里显式传 locale，默认 `en_US.UTF-8`（UTF-8 + 英文界面，
+不会再乱码）：
+
+```bash
+LANG="$ULOCALE" LC_ALL="$ULOCALE"
+```
+
+想要中文界面可以覆盖：
+
+```bash
+LOCALE=zh_CN.UTF-8 bash ~/bin/termux-gui-start.sh
+```
+
+> 注意：TMOE 的 `~/.config/tmoe-linux/locale.txt` 里通常写着 `zh_CN.UTF-8`，
+> 但 TMOE 自己的会话才会读取它；本项目默认不跟随，避免把界面切成中文。
+
+### 为什么"我没改语言也会乱码"
+
+乱码和界面语言是两件事：
+- **界面语言**由 `LANG` 的 messages 部分决定；
+- **字符编码**由 `LC_CTYPE` 决定。
+
+之前两者都是 POSIX，所以界面是英文、中文却是乱码。现在 `LC_CTYPE` 是 UTF-8，
+界面仍是英文，中文正常显示。
