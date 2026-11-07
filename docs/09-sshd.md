@@ -104,6 +104,42 @@ ssh -p 2222 pad@127.0.0.1
 ssh -p 2222 pad@127.0.0.1 'id'
 ```
 
+## 坑一：生成密钥时 `-N '""'` 会变成口令
+
+在 PowerShell 里这样写：
+
+```powershell
+ssh-keygen -t ed25519 -N '""' -f key
+```
+
+`""` 会被当成**两个引号字符的口令**，密钥就成了加密的。表现很有迷惑性：
+
+- 服务端日志显示 `Accepted key ...`（它只需要公钥，不需要口令）
+- 客户端却失败，`ssh -vvv` 里是
+
+  ```
+  debug3: sign_and_send_pubkey: signing using ssh-ed25519
+  debug2: we did not send a packet, disable method
+  ```
+
+  `we did not send a packet` 就是**签名失败**（需要口令但拿不到）。
+
+正确做法是用 Git Bash 生成（单引号是真空串）：
+
+```bash
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/key
+ssh-keygen -y -P '' -f ~/.ssh/key   # 能直接输出公钥 = 没有口令
+```
+
+## 坑二：设备 IP 会变
+
+`192.168.196.251` 是设备的 **ZeroTier** 地址（接口 `ztukuvm32f`），
+Wi-Fi 地址是另一套（例如 `10.223.69.61`）。换网络后旧地址就超时了：
+
+```bash
+adb shell ip -4 addr show wlan0 | grep inet
+```
+
 ## 已知问题：Windows 自带 ssh 客户端握手失败
 
 Windows 10/11 自带的 OpenSSH（9.5p2）在这里会卡在签名阶段：
