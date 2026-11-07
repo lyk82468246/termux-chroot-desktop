@@ -21,11 +21,31 @@ COMPOSITOR=${COMPOSITOR:-none}
 # 容器内 sshd：默认开启（容器没有 sshd 二进制时自动跳过）
 SSHD=${SSHD:-1}
 SSHD_PORT=${SSHD_PORT:-2222}
+# 音频：Termux 侧 PulseAudio 作为容器出口（Android OpenSL/AAudio）
+AUDIO=${AUDIO:-1}
+PULSE_PORT=${PULSE_PORT:-4713}
 BUSYBOX=${BUSYBOX:-/data/adb/ksu/bin/busybox}
 CONTAINER=${CONTAINER:-}
 
 STATE="$PREFIX/tmp/termux-gui"
 PIDF="$STATE/session.pid"
+
+# 启动 Termux 侧 PulseAudio 并开放本地 TCP 端口给容器
+start_pulse_audio() {
+  command -v pulseaudio >/dev/null 2>&1 || return 0
+  export XDG_RUNTIME_DIR="${TMPDIR:-$PREFIX/tmp}"
+  pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || true
+  sleep 0.4
+  if ! pactl info >/dev/null 2>&1; then
+    pulseaudio -k >/dev/null 2>&1 || true
+    pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1 || true
+    sleep 0.6
+  fi
+  pactl info >/dev/null 2>&1 || return 0
+  if ! pactl list short modules 2>/dev/null | grep -q module-native-protocol-tcp; then
+    pactl load-module module-native-protocol-tcp port="$PULSE_PORT" listen=127.0.0.1 auth-anonymous=1 >/dev/null 2>&1 || true
+  fi
+}
 LOG="$STATE/session.log"
 XLOG="$STATE/x11.log"
 HELPER="$STATE/root-helper.sh"
@@ -217,10 +237,10 @@ fi
 # ---------- 生成 root 侧脚本 ----------
 cat > "$HELPER" <<'ROOTEOF'
 #!/system/bin/sh
-D=$1; DPY=$2; CMD=$3; P=$4; BB=$5; UHOME=$6; UW=$7; UUID=$8; UGID=$9; UNAME=${10}; USHELL=${11}; ULOGIN=${12}; ULOCALE=${13}; SSHD=${14}; SSHD_PORT=${15}
+D=$1; DPY=$2; CMD=$3; P=$4; BB=$5; UHOME=$6; UW=$7; UUID=$8; UGID=$9; UNAME=${10}; USHELL=${11}; ULOGIN=${12}; ULOCALE=${13}; SSHD=${14}; SSHD_PORT=${15}; PULSE_ARG=${16}
 [ -d "$D" ] || { echo "容器不存在: $D"; exit 2; }
 mkdir -p "$D/proc" "$D/sys" "$D/dev" "$D/tmp/.X11-unix" 2>/dev/null
-export D DPY CMD P BB UHOME UW UUID UGID UNAME USHELL ULOGIN ULOCALE SSHD SSHD_PORT
+export D DPY CMD P BB UHOME UW UUID UGID UNAME USHELL ULOGIN ULOCALE SSHD SSHD_PORT PULSE_ARG
 EXTRA="$P/tmp/termux-gui/extra-mounts.sh"
 echo "parent_mounts_before=$(grep -c '' /proc/mounts)"
 echo "desktop_user=$UNAME home=$UHOME"
@@ -292,7 +312,7 @@ echo "desktop_user=$UNAME home=$UHOME"
   exec chroot "$D" /usr/bin/env -i \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     HOME="$UHOME" USER="$UNAME" LOGNAME="$UNAME" SHELL="$USHELL" DISPLAY="$DPY" \
-    LANG="$ULOCALE" LC_ALL="$ULOCALE" \
+    LANG="$ULOCALE" LC_ALL="$ULOCALE" PULSE_SERVER="$PULSE_ARG" \
     MESA_LOADER_DRIVER_OVERRIDE=kgsl \
     XDG_RUNTIME_DIR="$RUN" \
     $UW "$USHELL" $ULOGIN -c "$CMD"
@@ -309,14 +329,26 @@ info "启动容器桌面 (后台) ..."
 if declare -f tmoe_write_mounts >/dev/null; then
   tmoe_write_mounts "$STATE/extra-mounts.sh" "$CONTAINER" "$BUSYBOX"
 fi
+if [[ $AUDIO = 1 ]]; then
+  if start_pulse_audio; then
+    PULSE_ARG="tcp:127.0.0.1:$PULSE_PORT"
+    info "音频: PulseAudio → $PULSE_ARG"
+  else
+    PULSE_ARG=""
+    warn "PulseAudio 未启动，桌面将没有声音"
+  fi
+else
+  PULSE_ARG=""
+fi
+
 setsid bash -c '
   echo $$ > "$1"
-  exec "$2" -c "sh \"$3\" \"$4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9\" \"${10}\" \"${11}\" \"${12}\" \"${13}\" \"${14}\" \"${15}\" \"${16}\" \"${17}\" \"${18}\""
+  exec "$2" -c "sh \"$3\" \"$4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9\" \"${10}\" \"${11}\" \"${12}\" \"${13}\" \"${14}\" \"${15}\" \"${16}\" \"${17}\" \"${18}\" \"${19}\""
 ' _ "$PIDF" "$SU" \
     "$HELPER" "$CONTAINER" "$DISPLAY_NUM" "$DESKTOP_CMD" "$PREFIX" "$BUSYBOX" \
     "${USER_HOME:-/root}" "${USER_WRAP:-}" "${USER_UID:-0}" "${USER_GID:-0}" "${CHROOT_USER:-root}" \
     "${USER_SHELL:-/bin/sh}" "${USER_LOGIN_ARG:--l}" "${LOCALE_RESOLVED:-en_US.UTF-8}" \
-    "${SSHD:-1}" "${SSHD_PORT:-2222}" \
+    "${SSHD:-1}" "${SSHD_PORT:-2222}" "${PULSE_ARG:-}" \
   >>"$LOG" 2>&1 </dev/null &
 
 # 等桌面进程出现（最多 30 秒）

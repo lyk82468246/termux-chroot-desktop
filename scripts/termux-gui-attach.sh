@@ -56,6 +56,18 @@ else
   LOCALE_RESOLVED=${LOCALE:-en_US.UTF-8}
 fi
 
+# ---------- 音频：Termux 侧 PulseAudio ----------
+PULSE_ARG=""
+if [[ ${AUDIO:-1} = 1 ]] && command -v pulseaudio >/dev/null 2>&1; then
+  export XDG_RUNTIME_DIR="${TMPDIR:-$PREFIX/tmp}"
+  pactl info >/dev/null 2>&1 || { pulseaudio --start --exit-idle-time=-1 >/dev/null 2>&1; sleep 0.5; }
+  if pactl info >/dev/null 2>&1; then
+    pactl list short modules 2>/dev/null | grep -q module-native-protocol-tcp || \
+      pactl load-module module-native-protocol-tcp port="${PULSE_PORT:-4713}" listen=127.0.0.1 auth-anonymous=1 >/dev/null 2>&1
+    PULSE_ARG="tcp:127.0.0.1:${PULSE_PORT:-4713}"
+  fi
+fi
+
 mkdir -p "$STATE"
 if [[ -n $CMDLINE ]]; then
   printf '%s\n' "$CMDLINE" > "$CMDFILE"
@@ -105,14 +117,14 @@ if [ -s "$CONTAINER/tmp/attach-cmd" ]; then
   exec chroot "$CONTAINER" /usr/bin/env -i \\
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
     HOME="$USER_HOME" TERM="\${TERM:-xterm-256color}" DISPLAY="$DISPLAY_NUM" \\
-    LANG="$LOCALE_RESOLVED" LC_ALL="$LOCALE_RESOLVED" \\
+    LANG="$LOCALE_RESOLVED" LC_ALL="$LOCALE_RESOLVED" PULSE_SERVER="$PULSE_ARG" \\
     MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER SHELL="$USER_SHELL" USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
     $USER_WRAP $USER_SHELL $USER_LOGIN_ARG -c "\$(cat "$CONTAINER/tmp/attach-cmd")"
 fi
 exec chroot "$CONTAINER" /usr/bin/env -i \\
   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
   HOME="$USER_HOME" TERM="\${TERM:-xterm-256color}" DISPLAY="$DISPLAY_NUM" \\
-  LANG="$LOCALE_RESOLVED" LC_ALL="$LOCALE_RESOLVED" \\
+  LANG="$LOCALE_RESOLVED" LC_ALL="$LOCALE_RESOLVED" PULSE_SERVER="$PULSE_ARG" \\
   MESA_LOADER_DRIVER_OVERRIDE=kgsl XDG_RUNTIME_DIR=/tmp/runtime-$CHROOT_USER SHELL="$USER_SHELL" USER="$CHROOT_USER" LOGNAME="$CHROOT_USER" \\
   $USER_WRAP $USER_SHELL $USER_LOGIN_ARG
 INNEREOF

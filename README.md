@@ -106,7 +106,8 @@ bash install.sh --widget
     ├── 06-troubleshooting.md  # 排障手册
     ├── 07-electron-apps.md    # Electron/VS Code 起不来的原因
     ├── 08-firefox.md          # 安装非 snap 版 Firefox
-    └── 09-sshd.md             # 容器内默认开启 sshd
+    ├── 09-sshd.md             # 容器内默认开启 sshd
+    └── 10-audio.md            # 桌面声音（PulseAudio → Android）
 ```
 
 ## 已知限制
