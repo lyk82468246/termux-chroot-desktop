@@ -129,7 +129,7 @@ tmpfs 允许 suid。在会话命名空间里准备一份带 setuid 的 sudo 副�
 
 ```bash
 mkdir -p "$D/run/sudobin"
-mount -t tmpfs tmpfs "$D/run/sudobin"
+mount -t tmpfs -o mode=0755,uid=0,gid=0 tmpfs "$D/run/sudobin"
 cp "$D/usr/lib/cargo/bin/sudo" "$D/run/sudobin/sudo"
 chown 0:0 "$D/run/sudobin/sudo"
 chmod 4755 "$D/run/sudobin/sudo"
