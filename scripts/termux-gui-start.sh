@@ -291,7 +291,7 @@ echo "desktop_user=$UNAME home=$UHOME"
   "$BB" mount --bind /dev "$D/dev"          || exit 14
   "$BB" mount --bind /dev/pts "$D/dev/pts" 2>/dev/null || true
   "$BB" mount --bind "$P/tmp/.X11-unix" "$D/tmp/.X11-unix" || exit 15
-  sh "$P/tmp/termux-gui/ensure-dev-shm.sh" "$D" "$BB" || exit 19
+  sh "$P/tmp/termux-gui/ensure-dev-shm.sh" "$D" "$BB" "${WIN_SHM_SIZE:-256M}" || exit 19
   [ -r "$EXTRA" ] && . "$EXTRA"
 
   RUN="/tmp/runtime-$UNAME"

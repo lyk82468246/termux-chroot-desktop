@@ -111,3 +111,27 @@ rm -rf ~/.local/share/termux-chroot-desktop/wine/prefixes/default
 
 > 软件包（2.4 GB，在 `/usr`）和 Prefix（2.5 GB，在 `$HOME`）是**两回事**：
 > 卸载软件包不会删 Prefix，删 Prefix 也不影响软件包。
+
+## M1.1 安装器可靠性
+
+M1.1 修掉了三类"静默成功"隐患：
+
+1. **退出码传播**：`apt-get` / `wineboot` 的返回值现在会 `exit` 出去，
+   外层用 `rc=$?` 判定，不再被后面的 `echo` 覆盖。
+2. **安装后校验**：`dpkg --audit` + `apt-get check`，并逐个确认四个包都是
+   `install ok installed`。
+3. **Prefix 校验**：检查 `drive_c`、`system.reg`，并以桌面用户执行
+   `wine cmd /c exit 0`，同时校验 Prefix 属主等于桌面用户 UID。
+
+安装器的 root helper 全部运行在 `unshare -m` 里，并自带隔离自检
+（`shared:` 计数必须为 0），避免把 proc/sysfs/dev 挂载泄漏到全局。
+
+故障注入结果（真机）：
+
+| 场景 | 期望 | 结果 |
+|---|---|---|
+| `--check` | 通过且不改系统 | PASS |
+| 正常幂等安装 | 跳过 prefix 初始化 | PASS |
+| apt-get 返回失败 | 安装器失败 | PASS |
+| wineboot 返回失败 | 安装器失败 | PASS |
+| Prefix 属主错误 | 明确报错 | PASS |

@@ -150,8 +150,7 @@ write_shm_helper() {
   cat > "$out" <<'SHMEOF'
 #!/bin/sh
 # 用法: ensure-dev-shm.sh <chroot-root> [busybox]
-D=$1; BB=${2:-}
-SIZE=${WIN_SHM_SIZE:-256M}
+D=$1; BB=${2:-}; SIZE=${3:-${WIN_SHM_SIZE:-256M}}
 MOUNT="mount"
 if [ -n "$BB" ] && [ -x "$BB" ]; then MOUNT="$BB mount"; fi
 TARGET="$D/dev/shm"
@@ -163,8 +162,10 @@ if grep -q " $TARGET " /proc/self/mountinfo 2>/dev/null; then
 else
   $MOUNT -t tmpfs -o "size=$SIZE,mode=1777" tmpfs "$TARGET" || { echo "shm_mount_failed $TARGET"; exit 22; }
 fi
-chmod 1777 "$TARGET" 2>/dev/null || true
-echo "shm_ready size=$SIZE"
+chmod 1777 "$TARGET" || { echo "shm_chmod_failed $TARGET"; exit 23; }
+MODE=$("$BB" stat -c %a "$TARGET" 2>/dev/null || stat -c %a "$TARGET" 2>/dev/null)
+[ "$MODE" = "1777" ] || { echo "shm_mode_bad $MODE"; exit 24; }
+echo "shm_ready size=$SIZE mode=$MODE"
 SHMEOF
   chmod 755 "$out"
 }
