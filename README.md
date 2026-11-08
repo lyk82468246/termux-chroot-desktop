@@ -109,6 +109,7 @@ bash install.sh --widget
     ├── 09-sshd.md             # 容器内默认开启 sshd
     ├── 10-audio.md            # 桌面声音（PulseAudio → Android）
     ├── 11-windows-runtime.md  # Windows 运行时（M1：ARM64 Wine）
+    ├── 12-windows-amd64.md    # M2：win-run 与 AMD64/FEX
     └── spikes/windows-runtime-spike.md  # Hangover 可行性 Spike 报告
 ```
 

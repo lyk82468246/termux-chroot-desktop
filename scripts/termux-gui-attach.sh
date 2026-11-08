@@ -114,6 +114,8 @@ $BUSYBOX mount -t sysfs sysfs "$CONTAINER/sys" 2>/dev/null || true
 $BUSYBOX mount --bind /dev "$CONTAINER/dev" || exit 13
 $BUSYBOX mount --bind /dev/pts "$CONTAINER/dev/pts" 2>/dev/null || true
 sh "$PREFIX/tmp/termux-gui/ensure-dev-shm.sh" "$CONTAINER" "$BUSYBOX" "${WIN_SHM_SIZE:-256M}" || exit 19
+mkdir -p "$CONTAINER/tmp/termux-win-run" 2>/dev/null
+[ -d "$PREFIX/tmp/termux-win-run" ] && $BUSYBOX mount --bind "$PREFIX/tmp/termux-win-run" "$CONTAINER/tmp/termux-win-run" 2>/dev/null
 mkdir -p "$CONTAINER/tmp/.X11-unix" "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 chmod 700 "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 

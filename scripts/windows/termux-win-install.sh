@@ -46,10 +46,16 @@ source "$LIB"
 [[ -n ${CONTAINER:-} ]] || CONTAINER=$(ls -d "$HOME/.local/share/tmoe-linux/containers/chroot"/ubuntu-* 2>/dev/null | head -1)
 tmoe_resolve "$CONTAINER" "$BUSYBOX" 2>/dev/null || true
 
-UNAME_=${CHROOT_USER:-pad}
-UHOME_=${USER_HOME:-/home/pad}
-UUID_=${USER_UID:-1001}
-UGID_=${USER_GID:-60000}
+UNAME_=${CHROOT_USER:-}
+UHOME_=${USER_HOME:-}
+UUID_=${USER_UID:-}
+UGID_=${USER_GID:-}
+[[ -n $UNAME_ && -n $UHOME_ && -n $UUID_ && -n $UGID_ ]] || \
+  die "无法解析 TMOE 桌面用户（CHROOT_USER/USER_HOME/UID/GID），拒绝安装"
+[[ $UNAME_ != root && $UUID_ -ne 0 ]] || die "桌面用户解析为 root，拒绝用它初始化 Prefix"
+[[ -d $CONTAINER$UHOME_ ]] || die "用户 HOME 不存在: $CONTAINER$UHOME_"
+PW_ENTRY=$(awk -F: -v u="$UNAME_" '$1==u {print $3":"$4":"$6}' "$CONTAINER/etc/passwd" 2>/dev/null)
+[[ $PW_ENTRY == "$UUID_:$UGID_:$UHOME_" ]] || die "passwd 与 TMOE 解析不一致: ${PW_ENTRY:-无此用户} vs $UUID_:$UGID_:$UHOME_"
 
 info "容器: $CONTAINER"
 info "桌面用户: $UNAME_  UID=$UUID_  HOME=$UHOME_"
@@ -232,5 +238,15 @@ EOS
   ok "Prefix 初始化完成"
 fi
 
+# ---------- 容器内入口 win-run ----------
+WINRUN_SRC="$(cd "$(dirname "$0")" 2>/dev/null && pwd)/win-run"
+if [[ -r $WINRUN_SRC ]]; then
+  "$SU" -c "mkdir -p '$CONTAINER/usr/local/bin'; cp '$WINRUN_SRC' '$CONTAINER/usr/local/bin/win-run'; chmod 755 '$CONTAINER/usr/local/bin/win-run'" \
+    || die "安装 win-run 失败"
+  ok "已安装 /usr/local/bin/win-run"
+else
+  warn "未找到 win-run 源文件，跳过"
+fi
+
 ok "Windows Runtime 安装完成"
-info "下一步: bash ~/bin/termux-gui-start.sh 启动桌面（M2 提供统一 win-run 入口）"
+info "下一步: 启动桌面后，容器内用 win-run <app.exe> 运行；Termux 侧用 ~/bin/windows/termux-win-run.sh"

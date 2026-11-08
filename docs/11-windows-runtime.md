@@ -17,10 +17,10 @@ M1 的目标只有一个：**把 Spike 验证过的 ARM64 Wine 正式装进容�
 
 ```bash
 # 只体检，不改系统
-bash ~/bin/termux-win-install.sh --check
+bash ~/bin/windows/termux-win-install.sh --check
 
 # 正式安装（可重复执行，已装的不会重装）
-bash ~/bin/termux-win-install.sh
+bash ~/bin/windows/termux-win-install.sh
 ```
 
 安装过程：
@@ -64,7 +64,7 @@ M1 实测结果（真机）：
 | ARM64 Notepad 在 XFCE 显示 | PASS |
 | Wine 内 OpenGL = FD610 / Mesa 27 | PASS |
 | Z: 盘读写（`Z:\home\pad\...`） | PASS |
-| 真实音频播放（winmm `PlaySound` + `SND_SYNC`） | PASS（`PLAY_OK`，仍需人耳确认） |
+| 真实音频播放（winmm `PlaySound` + `SND_SYNC`） | PASS（API 调用成功；实际可听输出待确认） |
 | `/dev/shm` 在 start / attach 两条路径可用 | PASS |
 | stop → start 后 wineserver 无残留、Prefix 正常 | PASS |
 

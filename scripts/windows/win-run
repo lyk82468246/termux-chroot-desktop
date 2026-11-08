@@ -1,0 +1,117 @@
+#!/bin/bash
+# win-run —— 容器内统一 Windows PE 启动入口（M2：ARM64 / AMD64）
+#
+# 用法:
+#   win-run app.exe [args...]
+#   win-run --debug app.exe [args...]
+#   win-run --dir /some/dir app.exe [args...]
+#   win-run --argv-file /path/to/argv   # 供 Termux 侧安全传参（NUL 分隔，首条为 cwd）
+#
+# 设计约束：
+#   * 不实现第二套后端分发：AMD64 由 Hangover 自动走 FEX
+#   * 不做命令字符串拼接：最终一定 exec wine "$@"
+#   * 继承调用者环境，不重建、不清空
+set -u
+
+DEBUG=0
+DIR=""
+ARGV_FILE=""
+PROG=""
+
+die() { printf 'win-run: %s\n' "$*" >&2; exit 2; }
+usage() {
+  cat <<'EOF'
+用法: win-run [--debug] [--dir DIR] <app.exe> [args...]
+      win-run --argv-file <file>
+EOF
+}
+
+# ---------- 参数解析 ----------
+while (( $# )); do
+  case "$1" in
+    --debug) DEBUG=1; shift ;;
+    --dir) [[ $# -ge 2 ]] || die "--dir 需要参数"; DIR=$2; shift 2 ;;
+    --argv-file) [[ $# -ge 2 ]] || die "--argv-file 需要参数"; ARGV_FILE=$2; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) die "未知选项: $1" ;;
+    *) break ;;
+  esac
+done
+
+if [[ -n $ARGV_FILE ]]; then
+  [[ -r $ARGV_FILE ]] || die "读不到参数文件: $ARGV_FILE"
+  mapfile -d '' -t ARR < "$ARGV_FILE" || true
+  (( ${#ARR[@]} >= 2 )) || die "参数文件内容不完整（至少需要 cwd 和程序路径）"
+  [[ -z $DIR ]] && DIR=${ARR[0]}
+  set -- "${ARR[@]:1}"
+fi
+
+(( $# >= 1 )) || { usage >&2; exit 2; }
+PROG=$1; shift
+
+[[ -f $PROG ]] || die "找不到文件: $PROG"
+
+# ---------- PE 架构识别 ----------
+pe_machine() {
+  local f=$1 off sig m
+  off=$(od -An -tu4 -j60 -N4 "$f" 2>/dev/null | tr -d ' ')
+  [[ -n ${off:-} ]] || return 1
+  sig=$(dd if="$f" bs=1 skip="$off" count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
+  [[ $sig == 50450000 ]] || return 1
+  m=$(od -An -tu2 -j$((off + 4)) -N2 "$f" 2>/dev/null | tr -d ' ')
+  [[ -n ${m:-} ]] || return 1
+  printf '%s' "$m"
+}
+
+MACHINE=$(pe_machine "$PROG") || die "不是有效的 PE 文件: $PROG"
+case "$MACHINE" in
+  43620) ARCH=ARM64 ;;   # 0xaa64
+  34404) ARCH=AMD64 ;;   # 0x8664
+  332)   ARCH=I386  ;;   # 0x014c
+  *)     die "未知 PE Machine: 0x$(printf '%x' "$MACHINE") ($PROG)" ;;
+esac
+
+if [[ $ARCH == I386 ]]; then
+  printf 'win-run: 检测到 IA-32 (I386) PE。\n' >&2
+  printf 'win-run: IA-32 属于 M3 范围，M2 只支持 ARM64 / AMD64。\n' >&2
+  printf 'win-run: 实验路径（不保证）: HODLL=libwow64fex.dll wine %q ...\n' "$PROG" >&2
+  exit 3
+fi
+
+# ---------- Prefix ----------
+: "${WINEPREFIX:=$HOME/.local/share/termux-chroot-desktop/wine/prefixes/default}"
+: "${WINEDEBUG:=-all}"
+export WINEDEBUG
+export WINEPREFIX
+[[ -d $WINEPREFIX/drive_c ]] || die "Prefix 不可用: $WINEPREFIX（先运行 termux-win-install.sh）"
+
+# ---------- 工作目录 ----------
+if [[ -n $DIR ]]; then
+  [[ -d $DIR ]] || die "--dir 目录不存在: $DIR"
+  cd "$DIR" || die "无法进入目录: $DIR"
+fi
+
+# ---------- 调试信息 ----------
+if (( DEBUG )); then
+  {
+    printf 'win-run debug\n'
+    printf '  program : %s\n' "$PROG"
+    printf '  arch    : %s (PE machine 0x%x)\n' "$ARCH" "$MACHINE"
+    printf '  prefix  : %s\n' "$WINEPREFIX"
+    printf '  cwd     : %s\n' "$PWD"
+    printf '  wine    : %s\n' "$(command -v wine)"
+    wine --version 2>&1 | sed 's/^/  version : /'
+    printf '  display : %s\n' "${DISPLAY:-<未设置>}"
+    printf '  pulse   : %s\n' "${PULSE_SERVER:-<未设置>}"
+    if [[ $ARCH == AMD64 ]]; then
+      printf '  后端    : Hangover 自动选择 FEX（libarm64ecfex.dll）\n'
+      printf '  证据    : 运行日志中应出现 "starting FEX ... libarm64ecfex.dll"\n'
+    else
+      printf '  后端    : 原生 ARM64（无模拟器）\n'
+    fi
+  } >&2
+fi
+
+# ---------- 执行 ----------
+exec wine "$PROG" "$@"
