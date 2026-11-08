@@ -20,6 +20,7 @@ CONTAINER=${CONTAINER:-}
 STATE="$PREFIX/tmp/termux-gui"
 HELPER="$STATE/attach-helper.sh"
 CMDFILE="$STATE/attach-cmd.txt"
+mkdir -p "$STATE" 2>/dev/null
 
 die()  { printf '\033[31m[✗] %s\033[0m\n' "$*" >&2; exit 1; }
 ok()   { printf '\033[32m[✓] %s\033[0m\n' "$*"; }
@@ -77,8 +78,20 @@ fi
 
 
 
+x11_alive() {
+  local f p
+  for f in $(grep -la "termux-x11 com" /proc/[0-9]*/cmdline 2>/dev/null); do
+    p=${f#/proc/}; p=${p%/cmdline}
+    [ "$(cat /proc/$p/comm 2>/dev/null)" = "main" ] && return 0
+  done
+  return 1
+}
+
 if [[ -S "$PREFIX/tmp/.X11-unix/X${DISPLAY_NUM#:}" ]]; then
   info "桌面会话在运行，DISPLAY=$DISPLAY_NUM（图形程序可用）"
+elif x11_alive; then
+  warn "X 进程在，但 socket 已丢失（会话状态不一致）"
+  warn "图形程序会失败；请先 bash termux-gui-stop.sh 再重新 start"
 else
   info "桌面未运行（终端照常可用，图形程序会失败）"
 fi

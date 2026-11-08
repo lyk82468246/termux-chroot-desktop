@@ -56,7 +56,14 @@ deep_pids() {
 }
 
 # X 服务进程：busybox pgrep 一次搞定，避免逐进程扫 cmdline
-x11_pids() { ps -A -o PID,ARGS 2>/dev/null | grep "termux-x11 com" | grep -v grep | awk '{print $1}'; }
+# X 进程检测：走 /proc 的 cmdline + comm=main，不依赖 ps 的具体实现
+x11_pids() {
+  local f p
+  for f in $(grep -la "termux-x11 com" /proc/[0-9]*/cmdline 2>/dev/null); do
+    p=${f#/proc/}; p=${p%/cmdline}
+    [ "$(cat /proc/$p/comm 2>/dev/null)" = "main" ] && echo "$p"
+  done
+}
 
 # 关闭 Termux:X11 应用本体（按进程名，绝不 force-stop）
 close_x11_app() {
@@ -108,7 +115,15 @@ if [ -n "${XIDS// /}" ]; then
   XIDS=$(x11_pids | tr '\n' ' ')
   [ -n "${XIDS// /}" ] && kill -KILL $XIDS 2>/dev/null
 fi
+# 等 X 真正退出再清 socket：X 退出时会自己 unlink socket + rmdir 目录，
+# 提前删除会让下次启动的竞态更难判断
+for _ in $(seq 1 20); do
+  [ -z "$(x11_pids)" ] && break
+  sleep 0.25
+done
 rm -f "$PREFIX/tmp/.X${DISPLAY_NUM#:}-lock" "$PREFIX/tmp/.X11-unix/X${DISPLAY_NUM#:}"
+mkdir -p "$PREFIX/tmp/.X11-unix" 2>/dev/null
+chmod 1777 "$PREFIX/tmp/.X11-unix" 2>/dev/null || true
 
 # ---------- 3. 关闭 Termux:X11 应用（保留 Termux）----------
 if x11_app_running; then

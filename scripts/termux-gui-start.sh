@@ -134,20 +134,69 @@ start_compositor() {
   fi
 }
 
+# X 进程检测：走 /proc 的 cmdline + comm=main，不依赖 ps 的具体实现
 x11_pids() {
-  local d pid c
-  for d in /proc/[0-9]*; do
-    pid=${d#/proc/}
-    tr '\0' ' ' < "$d/cmdline" 2>/dev/null | grep -qF "termux-x11" && { echo "$pid"; continue; }
-    c=$(cat "$d/comm" 2>/dev/null) || continue
-    case "$c" in termux-x11*) echo "$pid" ;; esac
+  local f p
+  for f in $(grep -la "termux-x11 com" /proc/[0-9]*/cmdline 2>/dev/null); do
+    p=${f#/proc/}; p=${p%/cmdline}
+    [ "$(cat /proc/$p/comm 2>/dev/null)" = "main" ] && echo "$p"
   done
+}
+
+# 结束所有 X 进程并等它们真正退出：旧 X 退出时会 unlink socket 再 rmdir 目录，
+# 不等它退干净就启动新实例，新实例的 socket 会被旧实例的清理动作删掉。
+kill_x11_and_wait() {
+  local pids i
+  pids=$(x11_pids | tr '\n' ' ')
+  [[ -n ${pids// /} ]] || return 0
+  kill $pids 2>/dev/null || true
+  for i in $(seq 1 20); do
+    [[ -z $(x11_pids) ]] && return 0
+    sleep 0.25
+  done
+  pids=$(x11_pids | tr '\n' ' ')
+  [[ -n ${pids// /} ]] && kill -9 $pids 2>/dev/null || true
+  for i in $(seq 1 12); do
+    [[ -z $(x11_pids) ]] && return 0
+    sleep 0.25
+  done
+  return 1
+}
+
+start_x_server() {
+  local attempt
+  mkdir -p "$PREFIX/tmp/.X11-unix" 2>/dev/null
+  chmod 1777 "$PREFIX/tmp/.X11-unix" 2>/dev/null || true
+  rm -f "$XSOCK" "$PREFIX/tmp/.X${DISPLAY_NUM#:}-lock"
+  : > "$XLOG"
+  for attempt in 1 2 3; do
+    info "启动 X 服务 (第 $attempt 次尝试) ..."
+    nohup "$PREFIX/bin/termux-x11" "$DISPLAY_NUM" -ac -dpi "$DPI" >>"$XLOG" 2>&1 </dev/null &
+    for _ in $(seq 1 40); do
+      [[ -S $XSOCK ]] && break
+      sleep 0.3
+    done
+    sleep 3
+    if [[ -S $XSOCK ]] && [[ -n $(x11_pids) ]]; then return 0; fi
+    warn "第 $attempt 次失败：$(tail -3 "$XLOG" | tr '\n' ' ')"
+    kill_x11_and_wait
+    rm -f "$XSOCK" "$PREFIX/tmp/.X${DISPLAY_NUM#:}-lock"
+    sleep 1
+  done
+  return 1
 }
 
 XSOCK="$PREFIX/tmp/.X11-unix/X${DISPLAY_NUM#:}"
 
 mapfile -t RUNNING < <(session_pids)
 if (( ${#RUNNING[@]} > 0 )); then
+  # 桌面进程在，但 X socket 可能已被上次退出竞态删掉；此时图形栈不可用
+  if [[ ! -S $XSOCK ]]; then
+    warn "桌面进程在，但 X socket 丢失（会话已不可用）"
+    warn "这不是可自动恢复的状态（X 与桌面都绑在旧连接上）"
+    warn "请执行: bash termux-gui-stop.sh 然后重新 start"
+    exit 1
+  fi
   ok "桌面已在运行（容器内 ${#RUNNING[@]} 个进程）"
   info "日志: $LOG"
   # 顺手确保 X 应用在前台
@@ -201,29 +250,17 @@ fi
 mkdir -p "$STATE"
 
 # ---------- X 服务 ----------
-# 只认「socket 存在 + 进程活着」，避免被上次 kill 留下的僵尸 socket 骗到
+# 三种状态：socket+进程（正常）/ 仅进程（socket 被旧实例清理掉）/ 仅 socket（残留）
 if [[ -S $XSOCK && -n $(x11_pids) ]]; then
   ok "X 服务已在运行"
 else
-  [[ -S $XSOCK ]] && warn "发现残留 socket（服务已死），清理后重启"
-  rm -f "$XSOCK" "$PREFIX/tmp/.X${DISPLAY_NUM#:}-lock"
-  : > "$XLOG"
-  X_OK=0
-  for attempt in 1 2 3; do
-    info "启动 X 服务 (第 $attempt 次尝试) ..."
-    nohup "$PREFIX/bin/termux-x11" "$DISPLAY_NUM" -ac -dpi "$DPI" >>"$XLOG" 2>&1 </dev/null &
-    for _ in $(seq 1 40); do
-      [[ -S $XSOCK ]] && break
-      sleep 0.3
-    done
-    sleep 3   # 等 X 完成初始化，观察是否崩溃
-    if [[ -S $XSOCK ]] && [[ -n $(x11_pids) ]]; then X_OK=1; break; fi
-    warn "第 $attempt 次失败：$(tail -3 "$XLOG" | tr '\n' ' ')"
-    pkill -f "termux-x11 $DISPLAY_NUM" 2>/dev/null
-    rm -f "$XSOCK" "$PREFIX/tmp/.X${DISPLAY_NUM#:}-lock"
-    sleep 1
-  done
-  [[ $X_OK == 1 ]] || die "X 服务连续 3 次启动失败，见 $XLOG"
+  if [[ -n $(x11_pids) ]]; then
+    warn "X 进程存在但 socket 丢失（上次退出的竞态），重启 X 服务"
+    kill_x11_and_wait || die "无法结束残留的 X 进程"
+  elif [[ -S $XSOCK ]]; then
+    warn "发现残留 socket（服务已死），清理后重启"
+  fi
+  start_x_server || die "X 服务连续 3 次启动失败，见 $XLOG"
   ok "X 服务就绪"
 fi
 

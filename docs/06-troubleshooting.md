@@ -201,3 +201,49 @@ LOCALE=zh_CN.UTF-8 bash ~/bin/termux-gui-start.sh
 
 之前两者都是 POSIX，所以界面是英文、中文却是乱码。现在 `LC_CTYPE` 是 UTF-8，
 界面仍是英文，中文正常显示。
+## X 进程还在，但 socket 没了（会话"假活")
+
+症状：
+
+- `start` 说"桌面已在运行"，但任何图形程序都连不上 X
+- `$PREFIX/tmp/.X11-unix/` 目录消失或为空
+- `ps` 里 `termux-x11` 进程却活着
+
+根因是**退出竞态**：X 关闭时会 `unlink` 自己的 socket 再 `rmdir` 目录。
+如果旧 X 还没退干净就启动新 X，旧实例的清理动作会把**新实例**刚建好的
+socket 删掉。新 X 继续活着，但路径已经不存在，客户端全部连不上。
+
+另一个放大问题的因素：`x11_pids` 之前用 `ps -A -o PID,ARGS | grep ...` 判断，
+在不同 PATH 下（Termux 的 procps vs Android toybox）行为不一致，可能漏掉进程，
+于是脚本误判"X 已死"而反复启动新实例，冲突信息是
+`Cannot establish any listening sockets - Make sure an X server isn't already running`。
+
+现在的处理：
+
+1. **检测走 /proc**，不依赖 `ps` 实现：
+   ```bash
+   for f in $(grep -la "termux-x11 com" /proc/[0-9]*/cmdline 2>/dev/null); do
+     p=${f#/proc/}; p=${p%/cmdline}
+     [ "$(cat /proc/$p/comm 2>/dev/null)" = "main" ] && echo "$p"
+   done
+   ```
+   （X 的 `comm` 是 `main`，因为它是 app_process）
+2. **先等旧 X 真正退出**再启动新实例（`kill_x11_and_wait`），最多等 5 秒，超时用 `kill -9`。
+3. 启动前 `mkdir -p $PREFIX/tmp/.X11-unix && chmod 1777`，避免目录被 rmdir 后无法重建。
+4. `start` 分三种状态处理：socket+进程正常 / 只有进程（自动重启 X）/ 只有 socket（清残留后启动）。
+5. 如果**桌面进程在但 socket 丢失**，`start` 明确报错并让用户先 `stop`，不再假装成功：
+   ```
+   [!] 桌面进程在，但 X socket 丢失（会话已不可用）
+   [!] 请执行: bash termux-gui-stop.sh 然后重新 start
+   ```
+6. `stop` 会等 X 退出后再删 socket，并重建 1777 目录。
+
+验证方式（连续跑不会退化）：
+
+```bash
+for i in 1 2 3; do
+  bash ~/bin/termux-gui-stop.sh
+  bash ~/bin/termux-gui-start.sh
+  ls ~/../usr/tmp/.X11-unix/      # 应该有 X0
+done
+```
