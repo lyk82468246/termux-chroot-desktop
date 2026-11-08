@@ -16,6 +16,14 @@ done
 chmod 755 "$DEST"/termux-gui-start.sh "$DEST"/termux-gui-stop.sh "$DEST"/termux-gui-attach.sh
 chmod 644 "$DEST"/termux-gui-lib.sh
 
+# Windows 运行时（可选）
+if [[ -d "$SRC/scripts/windows" ]]; then
+  mkdir -p "$DEST/windows"
+  cp "$SRC"/scripts/windows/*.sh "$DEST/windows/" 2>/dev/null || true
+  chmod 755 "$DEST"/windows/*.sh 2>/dev/null || true
+  echo "已安装 Windows 运行时脚本到 $DEST/windows"
+fi
+
 echo "已安装到 $DEST："
 ls -l "$DEST"/termux-gui-*.sh
 

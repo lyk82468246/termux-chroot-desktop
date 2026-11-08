@@ -57,6 +57,10 @@ else
   LOCALE_RESOLVED=${LOCALE:-en_US.UTF-8}
 fi
 
+if declare -f write_shm_helper >/dev/null 2>&1; then
+  write_shm_helper "$STATE/ensure-dev-shm.sh"
+fi
+
 # ---------- 音频：Termux 侧 PulseAudio ----------
 PULSE_ARG=""
 if [[ ${AUDIO:-1} = 1 ]] && command -v pulseaudio >/dev/null 2>&1; then
@@ -109,6 +113,7 @@ $BUSYBOX mount -t proc proc "$CONTAINER/proc" || exit 12
 $BUSYBOX mount -t sysfs sysfs "$CONTAINER/sys" 2>/dev/null || true
 $BUSYBOX mount --bind /dev "$CONTAINER/dev" || exit 13
 $BUSYBOX mount --bind /dev/pts "$CONTAINER/dev/pts" 2>/dev/null || true
+sh "$PREFIX/tmp/termux-gui/ensure-dev-shm.sh" "$CONTAINER" "$BUSYBOX" || exit 19
 mkdir -p "$CONTAINER/tmp/.X11-unix" "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 chmod 700 "$CONTAINER/tmp/runtime-$CHROOT_USER" 2>/dev/null
 

@@ -141,3 +141,30 @@ tmoe_summary() {
   [[ $MOUNT_TERMUX == true ]] && parts+=("Termux:$TERMUX_SRC→/media/termux")
   printf '%s' "${parts[*]:-无额外挂载}"
 }
+
+# 生成“在会话 namespace 内准备 /dev/shm”的 helper。
+# 注意：必须在 unshare -m 且 mount --bind /dev 之后调用，
+# 因为容器 /dev 会被 Android devtmpfs 覆盖，提前建的目录会被盖住。
+write_shm_helper() {
+  local out="${1:-$STATE/ensure-dev-shm.sh}"
+  cat > "$out" <<'SHMEOF'
+#!/bin/sh
+# 用法: ensure-dev-shm.sh <chroot-root> [busybox]
+D=$1; BB=${2:-}
+SIZE=${WIN_SHM_SIZE:-256M}
+MOUNT="mount"
+if [ -n "$BB" ] && [ -x "$BB" ]; then MOUNT="$BB mount"; fi
+TARGET="$D/dev/shm"
+
+[ -d "$TARGET" ] || mkdir -p "$TARGET" 2>/dev/null || { echo "shm_mkdir_failed $TARGET"; exit 20; }
+
+if grep -q " $TARGET " /proc/self/mountinfo 2>/dev/null; then
+  grep " $TARGET " /proc/self/mountinfo | grep -q " - tmpfs " || { echo "shm_not_tmpfs $TARGET"; exit 21; }
+else
+  $MOUNT -t tmpfs -o "size=$SIZE,mode=1777" tmpfs "$TARGET" || { echo "shm_mount_failed $TARGET"; exit 22; }
+fi
+chmod 1777 "$TARGET" 2>/dev/null || true
+echo "shm_ready size=$SIZE"
+SHMEOF
+  chmod 755 "$out"
+}

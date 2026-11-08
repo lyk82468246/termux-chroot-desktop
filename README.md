@@ -107,7 +107,9 @@ bash install.sh --widget
     ├── 07-electron-apps.md    # Electron/VS Code 起不来的原因
     ├── 08-firefox.md          # 安装非 snap 版 Firefox
     ├── 09-sshd.md             # 容器内默认开启 sshd
-    └── 10-audio.md            # 桌面声音（PulseAudio → Android）
+    ├── 10-audio.md            # 桌面声音（PulseAudio → Android）
+    ├── 11-windows-runtime.md  # Windows 运行时（M1：ARM64 Wine）
+    └── spikes/windows-runtime-spike.md  # Hangover 可行性 Spike 报告
 ```
 
 ## 已知限制
