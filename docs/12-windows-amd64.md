@@ -3,6 +3,10 @@
 M2 只做两件事：给 Windows 程序一个统一入口，并正式支持 AMD64（经 Hangover 的 FEX）。
 IA-32 仍属 M3，DXVK 仍属 M4。
 
+> **`termux-win-run.sh` 已停止维护**（文件保留，不再更新，也不建议使用）。
+> 所有运行请直接在容器内使用 `win-run`。原因：它固定 `cwd=/tmp`、拒绝 Termux 私有目录，
+> 并且与容器内的路径语义不一致；容器内的 `win-run` 现已支持 `--dir` + 相对路径。
+
 ## 用法
 
 容器内（`termux-gui-attach.sh` 进入后）：
@@ -15,11 +19,18 @@ win-run --dir /tmp app.exe       # 指定工作目录
 win-run -- app.exe --help        # 程序自身的选项
 ```
 
-从 Termux 侧：
+从 Termux 侧（**已停止维护**，仅作历史记录）：
 
 ```bash
+# 旧的跨 chroot 包装器，不再维护
 bash ~/bin/windows/termux-win-run.sh /tmp/win-tests/args_test.exe "a b" "中文"
-WINRUN_DEBUG=1 bash ~/bin/windows/termux-win-run.sh app.exe
+```
+
+现在请在容器内直接运行：
+
+```bash
+cd "/path/to/app dir" && win-run "app.exe"
+win-run --dir "/path/to/app dir" "app.exe"
 ```
 
 ## PE 架构识别
@@ -60,9 +71,15 @@ M2 验收要求**必须出现这行**才算通过，只看退出码不算。
 
 ## 工作目录
 
-- 容器内调用：保持当前目录。
-- 从 Termux 调用：Termux 的 `$HOME` 是 `0700`，容器用户无法进入，因此**默认 `cwd=/tmp`**，
-  需要别的目录用 `--dir <容器内路径>`。这是明确行为，不是静默降级。
+- 容器内调用：保持当前目录（即 shell 的 `pwd`）。
+- `--dir DIR`：先校验 `DIR` 存在，再把**相对 EXE 按 `DIR` 解析**，然后 `cd DIR` 执行：
+
+  ```bash
+  win-run --dir "/home/pad/Office Tool" "Office Tool Plus.exe"
+  win-run --dir "/home/pad/Office Tool" "./Office Tool Plus.exe"
+  ```
+
+- 从 Termux 调用（旧包装器，已停止维护）：默认 `cwd=/tmp`。
 
 ## 环境继承
 
@@ -119,7 +136,7 @@ M2 验收要求**必须出现这行**才算通过，只看退出码不算。
 | 写法 | 含义 |
 |---|---|
 | `win-run /tmp/win-tests/app.exe` | 容器内的 `/tmp/...` |
-| `termux-win-run.sh /tmp/...` | 同样按**容器内**解释 |
+| ~~`termux-win-run.sh /tmp/...`~~ | 已停止维护，不再使用 |
 
 Termux 的 `$HOME`、`$PREFIX` 对容器用户不可见（目录是 `0700`），
 因此 `termux-win-run.sh` 会检测并直接拒绝，而不是让用户看到误导性的“找不到文件”：
@@ -144,7 +161,7 @@ bash ~/bin/windows/termux-win-run.sh /tmp/termux-win-run/app.exe
 
 ### 参数文件清理
 
-`termux-win-run.sh` 用 `trap cleanup EXIT` + `INT/TERM` 包住临时参数文件，
+`termux-win-run.sh`（已停止维护的旧包装器）用 `trap cleanup EXIT` + `INT/TERM` 包住临时参数文件，
 正常退出、Ctrl-C、`kill -TERM` 都会删除；实测三种情况的缓存目录都为空。
 
 ### 损坏 PE 的处理

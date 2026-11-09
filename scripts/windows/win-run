@@ -50,6 +50,14 @@ fi
 (( $# >= 1 )) || { usage >&2; exit 2; }
 PROG=$1; shift
 
+# --dir 时相对 EXE 按 DIR 解析：-f 检查与 PE 解析都基于解析后的路径
+if [[ -n $DIR ]]; then
+  [[ -d $DIR ]] || die "--dir 目录不存在: $DIR"
+  if [[ $PROG != /* ]]; then
+    PROG="$DIR/$PROG"
+  fi
+fi
+
 [[ -f $PROG ]] || die "找不到文件: $PROG"
 
 # ---------- PE 架构识别 ----------
