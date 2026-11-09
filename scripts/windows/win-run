@@ -54,11 +54,16 @@ PROG=$1; shift
 
 # ---------- PE 架构识别 ----------
 pe_machine() {
-  local f=$1 off sig m
+  local f=$1 sz off mz sig m
+  sz=$(stat -c %s "$f" 2>/dev/null) || return 1
+  (( sz >= 64 )) || return 1
+  mz=$(od -An -tx1 -N2 "$f" 2>/dev/null | tr -d ' \n')
+  [[ $mz == 4d5a ]] || return 1                      # "MZ"
   off=$(od -An -tu4 -j60 -N4 "$f" 2>/dev/null | tr -d ' ')
   [[ -n ${off:-} ]] || return 1
+  (( off >= 64 && off + 24 <= sz )) || return 1      # e_lfanew 必须在文件内
   sig=$(dd if="$f" bs=1 skip="$off" count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')
-  [[ $sig == 50450000 ]] || return 1
+  [[ $sig == 50450000 ]] || return 1                 # "PE\0\0"
   m=$(od -An -tu2 -j$((off + 4)) -N2 "$f" 2>/dev/null | tr -d ' ')
   [[ -n ${m:-} ]] || return 1
   printf '%s' "$m"

@@ -111,3 +111,72 @@ M2 验收要求**必须出现这行**才算通过，只看退出码不算。
 | `检测到 IA-32` | M3 范围 | 暂无正式支持 |
 | 程序卡死 | `/dev/shm` 缺失 | 确认经 `termux-gui-start.sh` 启动会话 |
 | `读不到参数文件` | Termux 侧目录不可读 | 确认 `attach` 已 bind `/tmp/termux-win-run` |
+
+## EXE 路径语义（重要）
+
+**传进去的 EXE 路径必须是“容器内可见”的路径**，不是 Termux 的路径。两者是不同的文件系统：
+
+| 写法 | 含义 |
+|---|---|
+| `win-run /tmp/win-tests/app.exe` | 容器内的 `/tmp/...` |
+| `termux-win-run.sh /tmp/...` | 同样按**容器内**解释 |
+
+Termux 的 `$HOME`、`$PREFIX` 对容器用户不可见（目录是 `0700`），
+因此 `termux-win-run.sh` 会检测并直接拒绝，而不是让用户看到误导性的“找不到文件”：
+
+```
+win-run: EXE 位于 Termux 私有目录，容器无法访问:
+         /data/data/com.termux/files/home/xxx.exe
+win-run: 请把它复制到容器可见路径（如容器内 /tmp/...），或放到共享存储后再试。
+```
+
+需要从 Termux 带文件进去时，先复制到容器可访问的位置，例如：
+
+```bash
+# Termux 侧
+cp app.exe ~/../usr/tmp/termux-win-run/app.exe    # 该目录已 bind 到容器 /tmp/termux-win-run
+bash ~/bin/windows/termux-win-run.sh /tmp/termux-win-run/app.exe
+```
+
+后续如需正式的“文件导入”功能，放到 M5 的产品化里做。
+
+## 健壮性
+
+### 参数文件清理
+
+`termux-win-run.sh` 用 `trap cleanup EXIT` + `INT/TERM` 包住临时参数文件，
+正常退出、Ctrl-C、`kill -TERM` 都会删除；实测三种情况的缓存目录都为空。
+
+### 损坏 PE 的处理
+
+`win-run` 会校验：`MZ` 标记 → `e_lfanew` 范围 → `PE\0\0` → `Machine`。
+实测以下输入都返回退出码 2 和明确错误，而不是误判架构：
+
+| 输入 | 结果 |
+|---|---|
+| 空文件 | 拒绝 |
+| 文本文件（无 MZ） | 拒绝 |
+| 有 PE 结构但被改掉 MZ | 拒绝 |
+| `e_lfanew` 越界 | 拒绝 |
+| 截断的 PE | 拒绝 |
+| 正常 ARM64 / AMD64 / I386 | 正确识别 |
+
+### `--debug` 与日志
+
+`--debug` 打印的是**判定信息**（架构、Prefix、Wine 版本、后端说明）；
+FEX 的真实证据来自运行日志里的这一行：
+
+```
+starting FEX (Hangover 11.16) based libarm64ecfex.dll
+```
+
+它输出到 stderr，`win-run` 不会自动保存日志；需要留存时请自行重定向，例如：
+
+```bash
+win-run --debug app.exe 2>&1 | tee /tmp/app.log
+```
+
+## 性能数据的读法
+
+上表 GUI 数字包含**程序自身存活时间**（`--exit-after 3000`，即 3 秒），
+所以 5.74 s ≈ 3 s + 2.7 s 启动与初始化，不能当作纯启动耗时。

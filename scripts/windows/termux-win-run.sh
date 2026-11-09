@@ -22,6 +22,10 @@ chmod 755 "$CACHE" 2>/dev/null
 
 ARGV=$(mktemp "$CACHE/argv.XXXXXX") || { echo "无法创建参数文件" >&2; exit 2; }
 chmod 644 "$ARGV"
+cleanup() { rm -f "$ARGV"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # 工作目录：
 #   Termux 的 HOME 是 0700，容器里的 pad 无法进入，因此默认用 /tmp。
@@ -31,6 +35,21 @@ if [[ ${1:-} == --dir ]]; then
   [[ $# -ge 3 ]] || { echo "--dir 需要参数" >&2; exit 2; }
   CWD_MAP=$2
   shift 2
+fi
+
+# EXE 路径语义：必须是容器内可见的路径。
+# Termux 的 $HOME / $PREFIX 是容器看不到的（0700），在这里明确拒绝，
+# 避免用户以为传任意 Termux 路径都能用。
+EXE_ARG=${1:-}
+if [[ -n $EXE_ARG && -e $EXE_ARG ]]; then
+  case "$EXE_ARG" in
+    "$PREFIX"/*|"$H"/*)
+      echo "win-run: EXE 位于 Termux 私有目录，容器无法访问:" >&2
+      echo "         $EXE_ARG" >&2
+      echo "win-run: 请把它复制到容器可见路径（如容器内 /tmp/...），或放到共享存储后再试。" >&2
+      exit 2
+      ;;
+  esac
 fi
 
 printf '%s\0' "$CWD_MAP" "$@" > "$ARGV"
