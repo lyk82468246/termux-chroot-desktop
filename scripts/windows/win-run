@@ -50,6 +50,16 @@ fi
 (( $# >= 1 )) || { usage >&2; exit 2; }
 PROG=$1; shift
 
+# 去掉引号内首尾空白（常见于复制粘贴路径）
+trim_sp() {
+  local s=$1
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+PROG=$(trim_sp "$PROG")
+[[ -n $DIR ]] && DIR=$(trim_sp "$DIR")
+
 # --dir 时先把 DIR 规范成绝对路径，再把相对 EXE 按 DIR 解析；
 # 这样后续 cd "$DIR" 不会让相对 PROG 二次拼接。
 if [[ -n $DIR ]]; then
