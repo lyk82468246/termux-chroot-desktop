@@ -1,0 +1,75 @@
+#!/bin/bash
+# win-gpu-diagnose —— 报告当前 Wine 图形栈的事实，不修改任何配置
+#
+# 用法：
+#   win-gpu-diagnose                 # 默认 Prefix
+#   WINEPREFIX=/path win-gpu-diagnose
+#   GL_PROBE=/path/gl_probe.exe win-gpu-diagnose   # 指定 Windows GL 探针
+set -u
+
+PREFIX="${WINEPREFIX:-$HOME/.local/share/termux-chroot-desktop/wine/prefixes/default}"
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROBE="${GL_PROBE:-}"
+for cand in "$SELF_DIR/gl_probe.exe" "$HOME/bin/windows/gl_probe.exe" /tmp/win-tests/graphics/gl_probe.exe; do
+    [ -n "$PROBE" ] && break
+    [ -x "$cand" ] && PROBE="$cand"
+done
+
+echo "== 图形运行时诊断 =="
+printf '%-22s %s\n' "Wine" "$(wine --version 2>/dev/null || echo unknown)"
+for p in hangover-wine hangover-wowbox64 hangover-libwow64fex libvulkan1 mesa-vulkan-drivers; do
+    v="$(dpkg-query -W -f='${Version}' "$p" 2>/dev/null || true)"
+    [ -n "$v" ] && printf '%-22s %s\n' "$p" "$v"
+done
+printf '%-22s %s\n' "WINEPREFIX" "$PREFIX"
+echo
+
+echo "== OpenGL（Wine 进程内）=="
+if [ -n "$PROBE" ] && [ -x "$PROBE" ]; then
+    WINEPREFIX="$PREFIX" DISPLAY="${DISPLAY:-:0}" WINEDEBUG=-all \
+        win-run "$PROBE" 2>/dev/null | grep -E '^GL_(VENDOR|RENDERER|VERSION)='
+else
+    if command -v glxinfo >/dev/null 2>&1; then
+        glxinfo -B 2>/dev/null | grep -E 'OpenGL (vendor|renderer|version)'
+    else
+        echo "GL 探针不可用（设置 GL_PROBE=... 或在容器内安装 mesa-utils）"
+    fi
+fi
+echo
+
+echo "== Vulkan =="
+if command -v vulkaninfo >/dev/null 2>&1; then
+    vulkaninfo --summary 2>/dev/null | grep -E 'deviceName|driverName|driverInfo|apiVersion' | head -8
+    mv="$(vulkaninfo 2>/dev/null | grep -m1 -E '^\s*multiViewport' | tr -d ' ')"
+    mx="$(vulkaninfo 2>/dev/null | grep -m1 -E '^\s*maxViewports' | tr -d ' ')"
+    [ -n "$mv" ] && echo "Vulkan: $mv"
+    [ -n "$mx" ] && echo "Vulkan: $mx"
+else
+    echo "vulkaninfo 不可用"
+fi
+echo
+
+echo "== D3D 图形路径 =="
+OVR="${WINEDLLOVERRIDES:-}"
+if printf '%s' "$OVR" | grep -qiE 'd3d1[01]|dxgi|d3d9'; then
+    echo "DLL overrides: $OVR"
+    if printf '%s' "$OVR" | grep -qi 'native'; then
+        echo "结论: 可能启用了 DXVK（native d3d/dxgi）—— 需确认 DLL 来源"
+    else
+        echo "结论: 自定义 override（非默认）"
+    fi
+else
+    echo "DLL overrides: 无（默认）"
+    echo "结论: WineD3D → OpenGL，本设备受支持路径"
+fi
+if [ -n "${FD_DEV_FEATURES:-}" ]; then
+    echo "警告: FD_DEV_FEATURES=$FD_DEV_FEATURES（实验性 feature 覆盖，正式环境不应设置）"
+else
+    echo "FD_DEV_FEATURES: 未设置（正确）"
+fi
+echo
+
+echo "== 已知限制 =="
+echo "- Adreno 610 + Turnip: multiViewport=false（Mesa 有意关闭，与 blob 对齐）"
+echo "- 强制开启后非零 ViewportIndex 路由错误，DXVK 不可用"
+echo "- Wine 控件中文可能显示为方框（字体回退问题，与图形无关）"

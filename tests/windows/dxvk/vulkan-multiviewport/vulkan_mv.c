@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
 
     VkPhysicalDeviceFeatures2 f2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
     vkGetPhysicalDeviceFeatures2(phys, &f2);
-    printf("FEATURES multiViewport=%d\n", f2.features.multiViewport);
+    printf("FEATURES multiViewport=%d geometryShader=%d\n", f2.features.multiViewport, f2.features.geometryShader);
 
     // 查看设备扩展是否提供 shader viewport index
     uint32_t extn = 0;
@@ -83,6 +83,10 @@ int main(int argc, char **argv) {
     qci.queueFamilyIndex = qfam; qci.queueCount = 1; qci.pQueuePriorities = &prio;
     VkPhysicalDeviceFeatures feats = {0};
     feats.multiViewport = VK_TRUE;
+    if (!strncmp(mode, "gs", 2)) {
+        if (!f2.features.geometryShader) { printf("RESULT=NO_GEOMETRY_SHADER\n"); return 12; }
+        feats.geometryShader = VK_TRUE;
+    }
     const char *devexts[1] = {"VK_EXT_shader_viewport_index_layer"};
     VkDeviceCreateInfo dci = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
     dci.queueCreateInfoCount = 1; dci.pQueueCreateInfos = &qci;

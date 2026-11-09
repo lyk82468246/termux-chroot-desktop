@@ -33,7 +33,7 @@ M4.0.1 已证明：强制 `FD_DEV_FEATURES=has_hw_multiview=1` 后 feature 变 t
 | `vs0` | Turnip 强制 | (0,255,0) | (0,0,0) | 正确（index 0） |
 | **`vs1`** | Turnip 强制 | (0,255,0) | (0,0,0) | **错误**：应左黑右绿 |
 | `vsdyn` | Turnip 强制 | (0,255,0) | (0,0,0) | **错误**：应左红右绿 |
-| **`gs1`** | Turnip 强制 | (0,255,0) | (0,0,0) | **错误**：GS 的 index 1 也被忽略 |
+| **`gs1`** | Turnip 强制（已启用 geometryShader） | (0,255,0) | (0,0,0) | **错误**：GS 的 index 1 也被忽略 |
 | `vsdyn` | Turnip 默认 | — | — | UNSUPPORTED（预期） |
 | `vs0` | llvmpipe | (0,255,0) | (0,0,0) | 正确 |
 | `vs1` | llvmpipe | (0,0,0) | (0,255,0) | 正确 |
@@ -60,8 +60,8 @@ OpDecorate %gl_ViewportIndex BuiltIn ViewportIndex
 
 按任务给定的四类：
 
-- A. Shader 编译器问题 → **排除**（SPIR-V 正确，llvmpipe 同文件正确）。
-- B. Turnip 驱动实现问题，有明确修复方向 → **部分成立但未定位到具体函数**：
+- A. Shader 编译器问题 → **不能完全排除**：llvmpipe 与 Turnip 使用不同的 NIR/IR3 后端，\n  同一份 SPIR-V 在 llvmpipe 上正确，只能排除 GLSL/SPIR-V 生成问题，不能排除 Turnip 的\n  NIR 降低或 IR3 指令生成问题。
+- B. Turnip 驱动实现问题 → **部分成立但未定位到具体函数**：
   我们只能看到"index 被忽略"，没有 IR3 反汇编/debug build 来确认是 NIR 降低、
   viewport 状态编程，还是硬件路由。
 - **C. 硬件动态 viewport 路由不可用 → 最符合证据。**
