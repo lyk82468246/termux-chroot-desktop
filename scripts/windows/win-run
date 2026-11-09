@@ -77,11 +77,15 @@ case "$MACHINE" in
   *)     die "未知 PE Machine: 0x$(printf '%x' "$MACHINE") ($PROG)" ;;
 esac
 
+# IA-32：默认走 Hangover 的 WoW64 + Box64；HODLL 可切到 FEX 做对照
 if [[ $ARCH == I386 ]]; then
-  printf 'win-run: 检测到 IA-32 (I386) PE。\n' >&2
-  printf 'win-run: IA-32 属于 M3 范围，M2 只支持 ARM64 / AMD64。\n' >&2
-  printf 'win-run: 实验路径（不保证）: HODLL=libwow64fex.dll wine %q ...\n' "$PROG" >&2
-  exit 3
+  if [[ -n ${HODLL:-} ]]; then
+    IA32_BACKEND="FEX ($HODLL)"
+    IA32_EVIDENCE='starting FEX (Hangover 11.16) based '"$HODLL"
+  else
+    IA32_BACKEND="Box64 (wowbox64.dll)"
+    IA32_EVIDENCE='[BOX64] WowBox64 arm64 ...'
+  fi
 fi
 
 # ---------- Prefix ----------
@@ -112,6 +116,10 @@ if (( DEBUG )); then
     if [[ $ARCH == AMD64 ]]; then
       printf '  后端    : Hangover 自动选择 FEX（libarm64ecfex.dll）\n'
       printf '  证据    : 运行日志中应出现 "starting FEX ... libarm64ecfex.dll"\n'
+    elif [[ $ARCH == I386 ]]; then
+      printf '  后端    : %s\n' "$IA32_BACKEND"
+      printf '  证据    : 运行日志中应出现 %s\n' "$IA32_EVIDENCE"
+      [[ -n ${HODLL:-} ]] && printf '  覆盖    : HODLL=%s\n' "$HODLL"
     else
       printf '  后端    : 原生 ARM64（无模拟器）\n'
     fi

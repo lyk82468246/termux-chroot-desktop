@@ -180,3 +180,61 @@ win-run --debug app.exe 2>&1 | tee /tmp/app.log
 
 上表 GUI 数字包含**程序自身存活时间**（`--exit-after 3000`，即 3 秒），
 所以 5.74 s ≈ 3 s + 2.7 s 启动与初始化，不能当作纯启动耗时。
+---
+
+## IA-32 支持（M3.1）
+
+`I386` PE 现在直接走 Hangover 的 WoW64 路径，不需要额外参数：
+
+```bash
+win-run app32.exe            # 默认 WowBox64
+HODLL=libwow64fex.dll win-run app32.exe   # 强制 FEX，做对照
+```
+
+`--debug` 会显示 IA-32 实际后端与应出现日志行：
+
+```
+  arch    : I386 (PE machine 0x14c)
+  后端    : Box64 (wowbox64.dll)
+  证据    : 运行日志中应出现 [BOX64] WowBox64 arm64 ...
+```
+
+### 真机验收（Hangover 11.16，正式 Prefix）
+
+| 测试 | 结果 |
+|---|---|
+| I386 PE 识别并执行 | PASS |
+| 退出码精确（返回 5 → rc=5） | PASS |
+| 参数（空格/中文/引号） | PASS |
+| Z: 盘读写 | PASS |
+| Box64 日志证据 | PASS（`WowBox64 arm64 v0.4.4`） |
+| FEX 覆盖 + 日志证据 | PASS（`starting FEX ... libwow64fex.dll`） |
+| GUI 窗口 + 按钮回调 | PASS |
+| 鼠标点击输入框、键盘输入、按钮触发 | PASS（用 `xdotool` 注入 X 事件，非物理触摸） |
+| Unicode 窗口标题 | PASS（`_NET_WM_NAME = "ia32 中文标题 GUI"`） |
+| Unicode 文本数据 | PASS（按钮读到 `hello ia32 guihello 中文 input`） |
+| **Unicode 文本渲染** | **PARTIAL**：数据正确，但 EDIT 控件里中文显示为方框（缺字形） |
+| 多实例（2 程序 1 wineserver） | PASS |
+| stop/start 后可用 | PASS |
+| ARM64 / AMD64 回归 | PASS |
+
+### 已知问题：Wine 控件里的中文是方框
+
+现象：标题栏（由 X 窗口管理器绘制）中文正常，但 Win32 `EDIT` 控件内的中文显示为 □□。
+数据本身没问题（写文件、按钮读回都是正确的 UTF-8）。
+
+已尝试但**无效**：
+
+```bash
+wine reg add "HKCU\\Software\\Wine\\Fonts\\Replacements" /v "Tahoma" /d "Noto Sans CJK SC" /f
+# 对 MS Shell Dlg / Tahoma / Arial / Segoe UI / Microsoft Sans Serif 都设置过
+```
+
+容器里确实有中文字体（`fc-list :lang=zh` 非空），所以更可能是 Wine 默认 GUI 字体
+没有回退到 CJK 字体，而不是字体缺失。后续可以尝试：
+
+1. 在应用里用 `CreateFontW(L"Noto Sans CJK SC", ...)` 显式设置控件字体，验证字体是否可用；
+2. 把 CJK 字体放进 `drive_c/windows/Fonts` 并在注册表登记；
+3. 检查 Wine 的 `FontSubstitutes` 与 fontconfig 映射关系。
+
+在解决之前，**中文 Windows 应用可能出现文字方框**，这是 M3.1 的已知限制。

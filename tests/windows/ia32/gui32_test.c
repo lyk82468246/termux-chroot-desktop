@@ -55,6 +55,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR cmd, int show) {
                               100, 100, 480, 220, NULL, NULL, hInst, NULL);
     if (!hwnd) { printf("GUI_FAIL create err=%lu\n", GetLastError()); return 9; }
 
+    SetWindowTextW(hwnd, L"ia32 中文标题 GUI");
     hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"hello ia32 gui",
                             WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
                             20, 20, 420, 28, hwnd, (HMENU)1001, hInst, NULL);
