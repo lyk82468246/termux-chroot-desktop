@@ -50,15 +50,22 @@ fi
 (( $# >= 1 )) || { usage >&2; exit 2; }
 PROG=$1; shift
 
-# --dir 时相对 EXE 按 DIR 解析：-f 检查与 PE 解析都基于解析后的路径
+# --dir 时先把 DIR 规范成绝对路径，再把相对 EXE 按 DIR 解析；
+# 这样后续 cd "$DIR" 不会让相对 PROG 二次拼接。
 if [[ -n $DIR ]]; then
   [[ -d $DIR ]] || die "--dir 目录不存在: $DIR"
+  DIR=$(cd -- "$DIR" && pwd -P) || die "无法进入目录: $DIR"
   if [[ $PROG != /* ]]; then
     PROG="$DIR/$PROG"
   fi
 fi
 
 [[ -f $PROG ]] || die "找不到文件: $PROG"
+
+# 规范化：去掉 ./、../ 与符号链接，避免把带 ".." 的相对路径交给 Wine
+if command -v realpath >/dev/null 2>&1; then
+  PROG=$(realpath -- "$PROG" 2>/dev/null || printf '%s' "$PROG")
+fi
 
 # ---------- PE 架构识别 ----------
 pe_machine() {

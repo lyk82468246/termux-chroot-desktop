@@ -72,11 +72,16 @@ M2 验收要求**必须出现这行**才算通过，只看退出码不算。
 ## 工作目录
 
 - 容器内调用：保持当前目录（即 shell 的 `pwd`）。
-- `--dir DIR`：先校验 `DIR` 存在，再把**相对 EXE 按 `DIR` 解析**，然后 `cd DIR` 执行：
+- `--dir DIR`：
+  1. 校验 `DIR` 存在，并**规范成绝对路径**（允许 `--dir` 本身是相对路径、含空格）；
+  2. 相对 EXE 按 `DIR` 解析；
+  3. EXE 再做一次 `realpath` 规范化，去掉 `./`、`../` 和符号链接；
+  4. 最后 `cd DIR` 并执行。
 
   ```bash
   win-run --dir "/home/pad/Office Tool" "Office Tool Plus.exe"
-  win-run --dir "/home/pad/Office Tool" "./Office Tool Plus.exe"
+  win-run --dir "Office Tool" "./Office Tool Plus.exe"
+  win-run --dir "Office Tool" "../Office Tool/files/setup.exe"
   ```
 
 - 从 Termux 调用（旧包装器，已停止维护）：默认 `cwd=/tmp`。
