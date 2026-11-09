@@ -37,6 +37,8 @@ static int pick_device(const char *want) {
 
 int main(int argc, char **argv) {
     const char *want = (argc > 1) ? argv[1] : "Turnip";
+    const char *mode = (argc > 2) ? argv[2] : "vsdyn";
+    printf("MODE=%s\n", mode);
 
     VkApplicationInfo ai = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
     ai.apiVersion = VK_API_VERSION_1_1;
@@ -131,24 +133,45 @@ int main(int argc, char **argv) {
     fbci.width = W; fbci.height = H; fbci.layers = 1;
     VkFramebuffer fb; CHECK(vkCreateFramebuffer(dev, &fbci, NULL, &fb));
 
-    // 读 shader
-    FILE *f = fopen("vert.spv", "rb");
-    if (!f) { printf("NO_VERT_SPV\n"); return 13; }
-    static char vb[65536]; size_t vsz = fread(vb, 1, sizeof(vb), f); fclose(f);
+    // 按模式选择 shader
+    int use_gs = (!strncmp(mode, "gs", 2));
+    const char *vfile = "vert.spv";
+    if (!strcmp(mode, "vs0")) vfile = "vert0.spv";
+    else if (!strcmp(mode, "vs1")) vfile = "vert1.spv";
+    else if (use_gs) vfile = "vert_pass.spv";
+
+    static char vb[65536], fb_[65536], gb[65536];
+    FILE *f = fopen(vfile, "rb");
+    if (!f) { printf("NO_VERT_SPV %s\n", vfile); return 13; }
+    size_t vsz = fread(vb, 1, sizeof(vb), f); fclose(f);
     f = fopen("frag.spv", "rb");
     if (!f) { printf("NO_FRAG_SPV\n"); return 13; }
-    static char fb_[65536]; size_t fsz = fread(fb_, 1, sizeof(fb_), f); fclose(f);
+    size_t fsz = fread(fb_, 1, sizeof(fb_), f); fclose(f);
+    size_t gsz = 0;
+    if (use_gs) {
+        f = fopen("geom1.spv", "rb");
+        if (!f) { printf("NO_GEOM_SPV\n"); return 13; }
+        gsz = fread(gb, 1, sizeof(gb), f); fclose(f);
+    }
 
     VkShaderModuleCreateInfo smci = {VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
     smci.codeSize = vsz; smci.pCode = (const uint32_t *)vb;
     VkShaderModule vs; CHECK(vkCreateShaderModule(dev, &smci, NULL, &vs));
     smci.codeSize = fsz; smci.pCode = (const uint32_t *)fb_;
     VkShaderModule fs; CHECK(vkCreateShaderModule(dev, &smci, NULL, &fs));
+    VkShaderModule gs = VK_NULL_HANDLE;
+    if (use_gs) {
+        smci.codeSize = gsz; smci.pCode = (const uint32_t *)gb;
+        CHECK(vkCreateShaderModule(dev, &smci, NULL, &gs));
+    }
 
-    VkPipelineShaderStageCreateInfo stages[2] = {
+    VkPipelineShaderStageCreateInfo stages[3] = {
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT, vs, "main", NULL},
         {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fs, "main", NULL},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_GEOMETRY_BIT, gs, "main", NULL},
     };
+    uint32_t nstages = use_gs ? 3 : 2;
+    if (use_gs) { stages[2].module = gs; }
     VkPipelineVertexInputStateCreateInfo vi = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     VkPipelineInputAssemblyStateCreateInfo ia = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -168,7 +191,7 @@ int main(int argc, char **argv) {
     VkPipelineLayoutCreateInfo plci = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     VkPipelineLayout pl; CHECK(vkCreatePipelineLayout(dev, &plci, NULL, &pl));
     VkGraphicsPipelineCreateInfo gpci = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-    gpci.stageCount = 2; gpci.pStages = stages;
+    gpci.stageCount = nstages; gpci.pStages = stages;
     gpci.pVertexInputState = &vi; gpci.pInputAssemblyState = &ia;
     gpci.pViewportState = &vp; gpci.pRasterizationState = &rs;
     gpci.pMultisampleState = &ms; gpci.pColorBlendState = &cb;
@@ -203,7 +226,7 @@ int main(int argc, char **argv) {
     VkMemoryRequirements bmr; vkGetBufferMemoryRequirements(dev, buf, &bmr);
     uint32_t bmt = UINT32_MAX;
     for (uint32_t i = 0; i < mp.memoryTypeCount; i++)
-        if ((bmr.memoryTypeBits & (1u << i)) && (mp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) { bmt = i; break; }
+        if ((bmr.memoryTypeBits & (1u << i)) && (mp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) && (mp.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) { bmt = i; break; }
     VkMemoryAllocateInfo bmai = {VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     bmai.allocationSize = bmr.size; bmai.memoryTypeIndex = bmt;
     VkDeviceMemory bmem; CHECK(vkAllocateMemory(dev, &bmai, NULL, &bmem));
@@ -211,6 +234,11 @@ int main(int argc, char **argv) {
     VkBufferImageCopy cpy = {0};
     cpy.imageSubresource = (VkImageSubresourceLayers){VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
     cpy.imageExtent = (VkExtent3D){W, H, 1};
+    VkMemoryBarrier mb = {VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    mb.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    mb.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
     vkCmdCopyImageToBuffer(cmd, img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buf, 1, &cpy);
     vkEndCommandBuffer(cmd);
 
@@ -221,6 +249,9 @@ int main(int argc, char **argv) {
 
     void *ptr = NULL;
     CHECK(vkMapMemory(dev, bmem, 0, VK_WHOLE_SIZE, 0, &ptr));
+    VkMappedMemoryRange mrng = {VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+    mrng.memory = bmem; mrng.offset = 0; mrng.size = VK_WHOLE_SIZE;
+    vkInvalidateMappedMemoryRanges(dev, 1, &mrng);
     unsigned char *px = ptr;
     int x1 = 16, y1 = 32, x2 = 48;
     unsigned char *a = px + (y1 * W + x1) * 4;
