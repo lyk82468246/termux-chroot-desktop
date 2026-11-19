@@ -16,6 +16,19 @@
 
 不包含：内核、ROM、root 方案。前提见 [docs/01-prerequisites.md](docs/01-prerequisites.md)。
 
+> **接手开发 / 换 Agent？** 先读 [HANDOFF.md](HANDOFF.md) 和
+> [docs/14-handoff.md](docs/14-handoff.md)：环境连接方式、里程碑状态、
+> 已经踩过的坑、当前未解决问题（Office Tool Plus GUI 崩溃）都在那里。
+
+### 当前能力一览
+
+| 能力 | 状态 |
+|---|---|
+| ARM64 / AMD64 / I386 Windows 程序 | 可用（Hangover + FEX / WowBox64） |
+| D3D9 / D3D10 / D3D11（WineD3D → OpenGL） | 可用（x64 + x86） |
+| DXVK | 不可用（Adreno 610 缺 multiViewport，已查清） |
+| Wine 控件中文 | 方框（数据正确，字体问题，未修） |
+
 ## 快速开始
 
 ```bash
